@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tuneway Tuner-Finder</title>
+<meta name="theme-color" content="#090807">
+<meta name="description" content="Finde den passenden Tuner für dein Auto: Fahrzeug wählen, Setup bauen, Tuner in der Nähe vergleichen.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tuneway">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..900;1,62..125,400..900&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#090807; --bg2:#0d0c0b; --panel:#121110; --panel2:#181615; --line:#25211f; --line2:#38302b;
+  --red:#ff2a1f; --orange:#ff6a00; --yellow:#ffc400; --green:#5ad17a;
+  --text:#f3efe9; --muted:#9b928b; --dim:#6c635d;
+  --body:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --hud:'Barlow Condensed','Arial Narrow',sans-serif;
+  --heat:linear-gradient(90deg,var(--red),var(--orange) 55%,var(--yellow));
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  /* Ablauf: Cockpit-Lader -> 1 Fahrzeug -> Hebebuehne -> 2 Garage -> Mechaniker -> 3 Tuner. Plus AGB, Impressum.
+     Serioese Flaechen: Archivo. Game-Elemente (Lader, Garage, HUD, Balken): Barlow Condensed, schraege Labels. */
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 18px}
+h1,h2,h3{font-stretch:125%;font-weight:800;text-transform:uppercase;line-height:1.04;margin:0;text-wrap:balance}
+.heat{background:var(--heat);-webkit-background-clip:text;background-clip:text;color:transparent}
+.num{font-variant-numeric:tabular-nums}
+.eyebrow{font-stretch:110%;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--orange);font-size:11.5px}
+.tag{display:inline-block;transform:skewX(-14deg);background:var(--orange);color:#120700;padding:2px 10px;font-family:var(--hud);font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:12px}
+.tag>span{display:inline-block;transform:skewX(14deg)}
+.muted{color:var(--muted)}
+
+/* ===== Overlay: Lader & Uebergaenge ===== */
+.ov{position:fixed;inset:0;z-index:100;background:#020202;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:calc(20px + var(--st)) 16px calc(20px + var(--sb));cursor:pointer;transition:opacity .5s ease, visibility .5s}
+.ov.out{opacity:0;visibility:hidden;pointer-events:none}
+.ov .stage{width:min(560px,94vw)}
+.ov .stage.wide{width:min(820px,96vw)}
+.ov svg{width:100%;height:auto;display:block}
+.ov .cap{margin-top:14px;text-align:center}
+.ov .cap b{display:block;font-stretch:125%;font-weight:800;font-style:italic;font-size:20px;letter-spacing:.12em;text-transform:uppercase}
+.ov .cap b em{font-style:italic;color:var(--orange)}
+.ov .cap span{display:block;font-family:var(--hud);letter-spacing:.26em;font-size:13px;color:var(--muted);text-transform:uppercase;margin-top:4px;min-height:1.4em}
+.ov .prog{width:min(260px,70vw);height:2px;background:#1c1817;margin:14px auto 0;overflow:hidden}
+.ov .prog i{display:block;height:100%;background:var(--heat);transform-origin:left;transform:scaleX(0)}
+.ov .skip{position:absolute;bottom:calc(14px + var(--sb));left:0;right:0;text-align:center;font-family:var(--hud);font-size:12px;letter-spacing:.2em;color:#4a423d;text-transform:uppercase}
+.steps-list{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-family:var(--hud);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#4d4540}
+.steps-list .on{color:var(--text)}
+.steps-list .ok{color:var(--green)}
+.cockpit .wheel{transform-origin:240px 300px;animation:steer 2.8s cubic-bezier(.45,0,.2,1) both .3s}
+@keyframes steer{0%{transform:rotate(0)}25%{transform:rotate(-24deg)}55%{transform:rotate(18deg)}80%{transform:rotate(-5deg)}100%{transform:rotate(0)}}
+.cockpit .lit{animation:litOn .7s steps(3) both .3s}
+@keyframes litOn{0%{opacity:0}40%{opacity:.6}60%{opacity:.2}100%{opacity:1}}
+.tube{animation:tube 1.2s steps(1) both}
+@keyframes tube{0%{opacity:.08}15%{opacity:1}22%{opacity:.15}35%{opacity:1}42%{opacity:.4}55%,100%{opacity:1}}
+.vib{animation:vib .06s linear infinite}
+@keyframes vib{50%{transform:translate(.8px,-.6px)}}
+.spark{animation:spark .25s ease-out infinite}
+@keyframes spark{from{opacity:1;transform:translate(0,0)}to{opacity:0;transform:translate(var(--x),var(--y))}}
+
+/* ===== Nav ===== */
+nav{position:sticky;top:0;z-index:30;background:rgba(9,8,7,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding-top:var(--st)}
+nav .wrap{display:flex;align-items:center;gap:14px;height:56px}
+.logo{font-stretch:125%;font-weight:800;font-style:italic;font-size:18px;letter-spacing:.14em;text-decoration:none;color:var(--text);display:flex;align-items:center;gap:9px}
+.logo b{color:var(--orange);font-weight:800}
+.demo-pill{font-family:var(--hud);font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.2em;border:1px solid var(--line2);color:var(--muted);padding:0 6px}
+.stepper{margin-left:auto;display:flex;gap:4px;align-items:center;font-family:var(--hud);font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.stepper a{color:var(--dim);text-decoration:none;padding:4px 8px;border:1px solid transparent}
+.stepper a.on{color:var(--text);border-color:var(--orange)}
+.stepper a.done{color:var(--muted)}
+.stepper i{width:10px;height:1px;background:var(--line2)}
+.stepper a{white-space:nowrap}
+@media (max-width:520px){.demo-pill{display:none}.stepper a .l{display:none}.stepper a.on .l{display:inline}}
+
+/* ===== Views ===== */
+.view{display:none}
+.view.on{display:block;animation:viewIn .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.btn{position:relative;overflow:hidden;border:0;cursor:pointer;font-stretch:112%;font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:13.5px;padding:15px 24px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:10px;transition:box-shadow .3s,border-color .3s,opacity .3s}
+.btn.primary{background:var(--orange);color:#120700}
+.btn.primary::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 50%,transparent 70%);transform:translateX(-120%)}
+.btn.primary:hover::after{transform:translateX(120%);transition:transform .7s ease}
+.btn.primary:hover{box-shadow:0 12px 40px -10px rgba(255,90,0,.7)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line2)}
+.btn.ghost:hover{border-color:var(--text)}
+.btn.small{font-size:12px;padding:11px 14px}
+.btn.block{width:100%}
+.btn[disabled]{opacity:.35;cursor:not-allowed}
+.back{display:inline-flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600;background:none;border:0;cursor:pointer;padding:0}
+.back:hover{color:var(--text)}
+
+/* ===== 1 Start ===== */
+.start-hero{position:relative;overflow:hidden;background:radial-gradient(70% 70% at 50% 30%,rgba(255,80,0,.13),transparent 70%),linear-gradient(180deg,#060505,#0b0908);border-bottom:1px solid var(--line)}
+.start-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px 40px;align-items:center;padding-top:28px;padding-bottom:30px}
+@media (max-width:860px){.start-grid{grid-template-columns:1fr;padding-top:8px;padding-bottom:22px}}
+.start-car{margin:0 -8px}
+.start h1{font-size:clamp(26px,4.4vw,52px);font-style:italic;margin-top:8px}
+.start .lead{color:var(--muted);font-size:15.5px;margin:8px 0 0;max-width:32em}
+.pick{background:var(--panel);border:1px solid var(--line);padding:16px;margin-top:16px}
+.pick-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fields .full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:11.5px;letter-spacing:.05em;color:var(--muted);font-weight:600}
+select,input[type=text],input[type=search],input[type=email],input[type=tel],textarea{background:var(--bg2);border:1px solid var(--line2);border-radius:0;padding:10px;width:100%;min-width:0;font-size:15px;font-weight:500;-webkit-appearance:none;appearance:none}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:26px}
+select:focus,input:focus,textarea:focus{border-color:var(--orange);outline:none}
+.specline{display:flex;flex-wrap:wrap;gap:4px 14px;margin:12px 0 14px;font-family:var(--hud);font-size:14.5px;color:var(--muted);letter-spacing:.03em}
+.specline b{color:var(--text);font-weight:600}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:700px){.how{grid-template-columns:1fr}}
+.how div{border:1px solid var(--line);background:var(--panel);padding:18px}
+.how b{font-family:var(--hud);color:var(--orange);font-size:14px;letter-spacing:.16em}
+.how h3{font-size:16px;margin:8px 0 6px}
+.how p{margin:0;color:var(--muted);font-size:14.5px}
+.blocksec{padding:44px 0;border-bottom:1px solid var(--line)}
+.blocksec h2{font-size:clamp(22px,3vw,32px);margin:10px 0 20px}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:700px){.plans{grid-template-columns:1fr}}
+.plan{background:var(--panel);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column}
+.plan.pro{border-color:var(--orange)}
+.plan h3{font-size:19px;margin-top:8px}
+.plan .p{font-stretch:125%;font-weight:800;font-size:34px;line-height:1;margin:14px 0 4px}
+.plan .p small{font-stretch:100%;font-size:13px;color:var(--muted);font-weight:500}
+.plan ul{list-style:none;padding:0;margin:14px 0 20px;display:grid;gap:8px;font-size:14.5px}
+.plan li{display:flex;gap:10px}
+.plan li::before{content:"";flex:none;width:12px;height:2px;background:var(--orange);margin-top:11px}
+.plan .btn{margin-top:auto}
+footer{padding:28px 0 calc(40px + var(--sb));color:var(--muted);font-size:13px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:space-between}
+footer a{color:var(--muted)}
+footer nav{all:unset;display:flex;gap:18px}
+
+/* ===== 2 Garage ===== */
+.vh{padding:16px 0 10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.vh h1{font-size:clamp(20px,3vw,30px);font-style:italic;margin-top:6px}
+.vh .sub{font-size:13.5px;color:var(--muted);margin-top:2px}
+.g-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.65fr);gap:18px;align-items:start;padding-bottom:120px}
+@media (max-width:960px){.g-layout{grid-template-columns:1fr}}
+details.box{background:var(--panel);border:1px solid var(--line);margin-bottom:12px}
+details.box summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-stretch:115%;text-transform:uppercase;font-size:13px;letter-spacing:.06em}
+details.box summary::-webkit-details-marker{display:none}
+details.box summary::after{content:"+";font-size:20px;color:var(--orange);font-weight:400}
+details.box[open] summary::after{content:"–"}
+details.box .in{padding:0 14px 14px}
+.goal{display:grid;grid-template-columns:84px 1fr 84px;gap:12px;align-items:center;margin-bottom:10px}
+.goal label{font-weight:600;font-size:13px;color:var(--muted)}
+.goal output{font-family:var(--hud);font-weight:700;font-size:20px;text-align:right}
+.goal output.off{color:var(--dim);font-weight:500;font-size:15px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;background:linear-gradient(90deg,var(--orange) var(--p,0%),#2a2422 var(--p,0%));outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--text);border:4px solid var(--orange);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--text);border:4px solid var(--orange);cursor:pointer}
+.goal-res{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:12px}
+.goal-res p{margin:0;font-size:14px;max-width:30em}
+.goal-res b{color:var(--yellow);font-weight:600}
+.garage{position:relative;background:linear-gradient(180deg,#0e0b0a,#080706);border:1px solid var(--line2);overflow:hidden}
+.garage::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
+.g-top{position:relative;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(90deg,rgba(255,42,31,.25),rgba(255,106,0,.08) 55%,transparent);border-bottom:1px solid var(--line2)}
+.g-top b{font-stretch:125%;font-style:italic;font-weight:800;font-size:16px;letter-spacing:.08em}
+.g-top span{font-family:var(--hud);font-size:14px;letter-spacing:.14em;color:var(--muted)}
+.g-top span b{font-family:var(--hud);font-style:normal;font-size:16px;color:var(--yellow);letter-spacing:.06em}
+.cat{position:relative;padding:15px 14px 8px;display:flex;align-items:center;gap:10px}
+.cat::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
+.tiles{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:0 14px}
+@media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.garage .tiles:last-child{padding-bottom:16px}
+.tile{position:relative;overflow:hidden;text-align:left;background:#141110;border:0;padding:10px 12px 10px 14px;cursor:pointer;min-height:58px;display:flex;flex-direction:column;justify-content:center;gap:3px;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);box-shadow:inset 0 0 0 1px var(--line);transition:background .25s,box-shadow .25s}
+.tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#2c2523;transition:background .2s,box-shadow .2s}
+.tile:hover{background:#1a1614}
+.tile[aria-pressed=true]{background:linear-gradient(90deg,rgba(255,90,0,.2),#141110 75%);box-shadow:inset 0 0 0 1px rgba(255,106,0,.75)}
+.tile[aria-pressed=true]::before{background:var(--heat);box-shadow:0 0 16px var(--orange)}
+.tile[aria-pressed=true]::after{content:"";position:absolute;top:0;right:0;width:12px;height:12px;background:var(--orange);clip-path:polygon(0 0,100% 0,100% 100%)}
+.tile.flash{animation:tflash .55s ease}
+@keyframes tflash{0%{background:rgba(255,160,60,.45)}}
+.tile[disabled]{opacity:.3;cursor:not-allowed}
+.tile strong{font-size:13.5px;font-weight:600;line-height:1.2}
+.tile .meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-family:var(--hud);font-size:13.5px}
+.tile .eff{color:var(--yellow);font-weight:600}
+.tile .pr{color:var(--muted)}
+.side{position:sticky;top:76px}
+@media (max-width:960px){.side{position:static}}
+.side .panel{background:var(--panel);border:1px solid var(--line);padding:16px}
+.big3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.big3 div{background:var(--panel2);padding:10px}
+.big3 small{display:block;font-size:11px;color:var(--muted);font-weight:500}
+.big3 b{font-family:var(--hud);font-size:26px;font-weight:700;line-height:1.1;font-style:italic}
+.big3 i{display:block;font-style:normal;font-family:var(--hud);font-size:13px;color:var(--dim)}
+.big3 i.up{color:var(--yellow)}
+.bars{margin-top:14px;display:grid;gap:8px}
+.bh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.bar-row{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:center}
+.bar-row span{font-family:var(--hud);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:13px;color:var(--muted)}
+.segs{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
+.segs i{height:10px;background:#221d1b;transform:skewX(-18deg);transition:background .3s}
+.segs i.s{background:#d9d1c8}
+.segs i.u{background:var(--orange);box-shadow:0 0 8px rgba(255,106,0,.6)}
+.legend{display:flex;gap:12px;font-family:var(--hud);font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:9px;height:9px;transform:skewX(-18deg);margin-right:5px;vertical-align:-1px}
+.lines{font-size:13px;color:var(--muted);margin:12px 0 0;padding:0;list-style:none}
+.lines li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #1d1a18}
+.lines li span:last-child{color:var(--text)}
+.legal{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:13px;color:var(--muted)}
+.legal::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;margin-top:6px;background:var(--yellow)}
+.legal.ok::before{background:var(--green)}
+.fine{font-size:12px;color:var(--dim);margin-top:10px}
+.ctabar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:rgba(8,7,6,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:2px solid var(--orange);padding:8px 0 calc(8px + var(--sb));display:none}
+.ctabar.on{display:block}
+.ctabar .wrap{display:flex;align-items:center;gap:12px}
+.ctabar .vals{display:flex;gap:16px;flex:1;min-width:0}
+.ctabar .vals div{min-width:0}
+.ctabar small{display:block;font-family:var(--hud);font-size:10.5px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.ctabar b{font-family:var(--hud);font-size:20px;font-weight:700;font-style:italic;white-space:nowrap}
+@media (max-width:420px){.ctabar .vals .hide-s{display:none}.ctabar .vals{gap:12px}}
+
+/* ===== 3 Tuner ===== */
+.searchbar{position:sticky;top:calc(56px + var(--st));z-index:20;background:rgba(9,8,7,.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 0}
+.sb-row{display:flex;gap:10px;align-items:center}
+.sb-in{position:relative;flex:1}
+.sb-in input{padding-left:38px;height:44px}
+.sb-in svg{position:absolute;left:12px;top:13px;width:18px;height:18px;stroke:var(--muted)}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border:1px solid var(--line2);background:transparent;padding:7px 13px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.chips button[aria-pressed=true]{background:var(--text);color:#0b0908;border-color:var(--text)}
+.chips .tog[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:#120700}
+.t-sum{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;padding:16px 0 12px;font-size:14px;color:var(--muted)}
+.t-sum b{color:var(--text);font-weight:600}
+.combo{border:1px solid var(--line2);border-left:3px solid var(--orange);background:var(--panel);padding:12px 14px;margin-bottom:12px;font-size:14.5px}
+.combo b{color:var(--yellow);font-weight:600}
+.shops{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;padding-bottom:40px}
+.shop{background:var(--panel);border:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;transition:transform .3s,border-color .3s,opacity .3s}
+.shop:hover{transform:translateY(-3px);border-color:var(--line2)}
+.shop.pro{border-color:rgba(255,106,0,.55)}
+.shop.nomatch{opacity:.5}
+.shop.anim{animation:viewIn .45s cubic-bezier(.2,.8,.2,1) both}
+.shop .banner{position:relative;height:150px;overflow:hidden}
+.shop .banner .car{position:absolute;width:92%;left:4%;bottom:2px}
+.shop .banner .lg{position:absolute;left:12px;top:12px;width:42px;height:42px;display:grid;place-items:center;font-stretch:125%;font-weight:800;font-style:italic;font-size:14px;color:#120700;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.shop .banner .tag{position:absolute;right:12px;top:12px}
+.shop .bd{padding:14px 16px 16px;display:grid;gap:10px}
+.shop h3{font-size:16px;font-stretch:112%}
+.shop .addr{font-size:13.5px;color:var(--muted);margin-top:2px}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.facts div{background:var(--panel2);padding:8px 9px}
+.facts small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
+.facts b{font-family:var(--hud);font-size:17px;font-weight:700;line-height:1.15;display:block}
+.facts b.p{color:var(--yellow)}
+.caps{display:flex;flex-wrap:wrap;gap:4px}
+.caps span{font-size:11.5px;padding:2px 7px;border:1px solid var(--line);color:var(--muted)}
+.caps span.hit{border-color:rgba(255,106,0,.5);color:var(--text)}
+.caps span.miss{border-color:rgba(255,42,31,.5);color:#ff8a80;text-decoration:line-through}
+.empty{padding:40px 0;color:var(--muted);text-align:center}
+
+/* ===== Recht ===== */
+.legaltext{max-width:760px;padding-top:24px;padding-bottom:60px}
+.legaltext a{color:var(--orange)}
+.legaltext h1{font-size:clamp(22px,3.4vw,34px);margin:14px 0 6px}
+.legaltext h2{font-size:15px;font-stretch:110%;margin:28px 0 8px}
+.legaltext p,.legaltext li{color:#cfc7c0;font-size:15px}
+.legaltext ol,.legaltext ul{padding-left:20px}
+.note{border:1px solid rgba(255,196,0,.4);background:rgba(255,196,0,.06);padding:12px 14px;font-size:14px;color:#e9dcc4;margin:14px 0}
+.missing{color:var(--yellow);font-weight:600}
+
+/* ===== Profil ===== */
+.modal{position:fixed;inset:0;z-index:50;display:none;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:calc(14px + var(--st)) 14px calc(14px + var(--sb));overflow-y:auto}
+.modal.open{display:block}
+.sheet{max-width:860px;margin:10px auto;background:var(--panel);border:1px solid var(--line2);overflow:hidden;animation:wipe .55s cubic-bezier(.77,0,.18,1) both}
+@keyframes wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.sheet .banner{position:relative;height:230px;overflow:hidden}
+.sheet .banner .car{position:absolute;width:88%;left:6%;bottom:0}
+.sheet .banner .ttl{position:absolute;left:20px;top:18px;right:70px}
+.sheet .banner h2{font-size:clamp(22px,4vw,38px);font-style:italic;text-shadow:0 2px 24px #000;margin-top:8px}
+.x{position:absolute;top:12px;right:12px;z-index:2;width:40px;height:40px;border:1px solid var(--line2);background:rgba(9,8,7,.85);cursor:pointer;font-size:20px;line-height:1}
+.sheet .inner{padding:20px;display:grid;gap:24px}
+.sheet h4{font-stretch:115%;font-weight:700;text-transform:uppercase;font-size:13.5px;letter-spacing:.06em;margin:0 0 10px}
+.builds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.builds{grid-template-columns:1fr}}
+.build{background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+.build .banner{height:100px}
+.build div.t{padding:9px 12px;font-size:13.5px;color:var(--muted)}
+.build b{font-family:var(--hud);font-size:21px;font-weight:700;display:block;color:var(--text)}
+table.pt{width:100%;border-collapse:collapse;font-size:14.5px}
+table.pt td{padding:8px 0;border-bottom:1px solid #1f1b19}
+table.pt td:last-child{text-align:right;white-space:nowrap}
+table.pt tr.sum td{border-bottom:0;font-weight:700;color:var(--yellow);padding-top:12px}
+.quotes{display:grid;gap:8px}
+.quotes blockquote{margin:0;background:var(--panel2);border-left:2px solid var(--orange);padding:10px 12px;font-size:14.5px}
+.quotes cite{display:block;font-style:normal;color:var(--muted);font-size:12.5px;margin-top:4px}
+form.contact{display:grid;gap:10px}
+form.contact .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){form.contact .two{grid-template-columns:1fr}}
+.sent{display:none;padding:14px;border:1px solid rgba(90,209,122,.4);background:rgba(90,209,122,.07)}
+.sent.show{display:block}
+.toast{position:fixed;left:50%;top:calc(66px + var(--st));transform:translate(-50%,-30px);opacity:0;z-index:60;background:#0f0d0c;border:1px solid var(--line2);border-left:3px solid var(--orange);padding:10px 16px;font-size:14px;max-width:calc(100% - 36px);transition:transform .35s cubic-bezier(.2,.9,.3,1.2),opacity .3s;pointer-events:none}
+.toast.show{transform:translate(-50%,0);opacity:1}
+
+/* Auto */
+.car{width:100%;height:auto;display:block;overflow:visible}
+.car .wspin{transform-box:fill-box;transform-origin:center}
+.car.moving .wspin{animation:spin .4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.car .sweep{animation:sweep 6s cubic-bezier(.6,0,.3,1) infinite 1.2s}
+@keyframes sweep{0%{transform:translateX(-750px)}40%,100%{transform:translateX(750px)}}
+.parkin{animation:park 1.6s cubic-bezier(.15,.85,.3,1) both}
+@keyframes park{0%{transform:translateX(-90%)}80%{transform:translateX(1.5%)}100%{transform:none}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- Overlay fuer Lader und Uebergaenge -->
+<div class="ov" id="ov" aria-hidden="true">
+  <div class="stage" id="ovStage"></div>
+  <div class="cap"><b id="ovTitle"></b><span id="ovSub"></span></div>
+  <div id="ovSteps"></div>
+  <div class="prog"><i id="ovProg"></i></div>
+  <div class="skip">Tippen zum Überspringen</div>
+</div>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#start">TUNE<b>WAY</b> <span class="demo-pill">DEMO</span></a>
+    <div class="stepper" id="stepper">
+      <a href="#start" data-v="start">1<span class="l"> Auto</span></a><i></i><a href="#garage" data-v="garage">2<span class="l"> Tuning</span></a><i></i><a href="#tuner" data-v="tuner">3<span class="l"> Tuner</span></a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== 1 Fahrzeug ===== -->
+<main class="view start" id="v-start">
+  <div class="start-hero">
+    <div class="wrap start-grid">
+      <div class="start-car" id="startCar"></div>
+      <div>
+        <div class="eyebrow">Tuner-Vermittlung · Köln / Bonn / Bergisches Land</div>
+        <h1>Rein als Serie. <span class="heat">Raus als Legende.</span></h1>
+        <p class="lead">Auto wählen, Setup bauen, Tuner in deiner Nähe vergleichen.</p>
+        <div class="pick">
+          <div class="pick-h"><span class="tag"><span>Dein Fahrzeug</span></span></div>
+          <div class="fields">
+            <label class="f" for="brand">Marke<select id="brand"></select></label>
+            <label class="f" for="model">Modell<select id="model"></select></label>
+            <label class="f" for="series">Baureihe<select id="series"></select></label>
+            <label class="f" for="variant">Motorisierung<select id="variant"></select></label>
+            <label class="f full" for="plz">Deine PLZ<input id="plz" type="text" inputmode="numeric" maxlength="5" value="53797" autocomplete="postal-code"></label>
+          </div>
+          <div class="specline num" id="specline"></div>
+          <button class="btn primary block" type="button" id="go1">Bestätigen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="blocksec"><div class="wrap">
+    <div class="eyebrow">So läuft’s</div>
+    <h2>In drei Schritten zum Tuner</h2>
+    <div class="how">
+      <div><b>01</b><h3>Fahrzeug</h3><p>Marke, Modell, Baureihe und Motor wählen. Wir kennen die Serienwerte.</p></div>
+      <div><b>02</b><h3>Garage</h3><p>Ziel vorgeben oder Teile einbauen. Leistung und Preis ändern sich live.</p></div>
+      <div><b>03</b><h3>Tuner</h3><p>Betriebe in deiner Nähe mit Preis für dein Setup und nächstem freien Termin.</p></div>
+    </div>
+  </div></div>
+  <div class="blocksec" id="fuer-tuner"><div class="wrap">
+    <div class="eyebrow">Für Werkstätten &amp; Tuner</div>
+    <h2>Werde gefunden</h2>
+    <div class="plans">
+      <div class="plan"><div class="eyebrow">Basis</div><h3>Gelistet</h3><div class="p num">19,90 € <small>pro Monat</small></div>
+        <ul><li>Eintrag mit Leistungen, Marken und Preisen</li><li>Erscheinst in den Filtern „Nächste“, „Günstigste“, „Bewertung“</li><li>Adresse und Telefon im Profil</li></ul>
+        <button class="btn ghost" type="button" data-plan="Basis">Basis wählen</button></div>
+      <div class="plan pro"><div class="eyebrow">Pro · Empfohlen</div><h3>Ganz oben</h3><div class="p num">79,90 € <small>pro Monat</small></div>
+        <ul><li>Alles aus Basis</li><li>Kontaktformular: Anfragen mit Fahrzeug, Zielen und Setup</li><li>Eigene Mini-Website mit Banner, Builds und Preisen</li><li>Hervorgehoben und Vorrang bei „Empfohlen“</li></ul>
+        <button class="btn primary" type="button" data-plan="Pro">Pro wählen</button></div>
+    </div>
+  </div></div>
+  <footer><div class="wrap"><span>© 2026 Tuneway · Demo-Version</span><nav><a href="#agb">AGB</a><a href="#impressum">Impressum</a></nav></div></footer>
+</main>
+
+<!-- ===== 2 Garage ===== -->
+<main class="view" id="v-garage">
+  <div class="wrap">
+    <div class="vh">
+      <div><a class="back" href="#start">← Fahrzeug ändern</a><h1 id="gTitle"></h1><div class="sub num" id="gSub"></div></div>
+    </div>
+    <div class="g-layout">
+      <div>
+        <details class="box" id="goalBox">
+          <summary>Ziel vorgeben</summary>
+          <div class="in">
+            <div class="goal"><label for="gPs">Leistung</label><input type="range" id="gPs"><output id="oPs" for="gPs"></output></div>
+            <div class="goal"><label for="gV">Vmax</label><input type="range" id="gV"><output id="oV" for="gV"></output></div>
+            <div class="goal"><label for="gT">0–100</label><input type="range" id="gT"><output id="oT" for="gT"></output></div>
+            <div class="goal-res"><p id="goalTxt"></p><button class="btn primary small" type="button" id="applyGoal">Übernehmen</button></div>
+          </div>
+        </details>
+        <div class="garage" id="menu"></div>
+      </div>
+      <aside class="side">
+        <div class="panel" aria-live="polite">
+          <div class="big3">
+            <div><small>Leistung</small><b class="num" id="kPs">0</b><i id="dPs"></i></div>
+            <div><small>0–100 km/h</small><b class="num" id="kT">0</b><i id="dT"></i></div>
+            <div><small>Vmax</small><b class="num" id="kV">0</b><i id="dV"></i></div>
+          </div>
+          <div class="bars">
+            <div class="bh"><span class="tag"><span>Leistungsprofil</span></span><span class="legend"><span><i style="background:#d9d1c8"></i>Serie</span><span><i style="background:var(--orange)"></i>Tuning</span></span></div>
+            <div class="bar-row"><span>Sprint</span><div class="segs" id="bAcc"></div></div>
+            <div class="bar-row"><span>Topspeed</span><div class="segs" id="bTop"></div></div>
+            <div class="bar-row"><span>Handling</span><div class="segs" id="bHan"></div></div>
+            <div class="bar-row"><span>Bremsen</span><div class="segs" id="bBrk"></div></div>
+            <div class="bar-row"><span>Sound</span><div class="segs" id="bSnd"></div></div>
+          </div>
+          <ul class="lines num" id="lines"></ul>
+          <div class="legal" id="legal"></div>
+          <div class="fine">Leistung: Richtwerte. „ab“-Preise: günstigster Tuner je Teil.</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<!-- ===== 3 Tuner ===== -->
+<main class="view" id="v-tuner">
+  <div class="searchbar">
+    <div class="wrap">
+      <div class="sb-row">
+        <a class="back" href="#garage" aria-label="Zurück zur Garage">←</a>
+        <div class="sb-in">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input id="q" type="search" placeholder="Tuner oder Ort suchen" aria-label="Tuner oder Ort suchen">
+        </div>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="Sortieren und filtern">
+        <button type="button" data-s="rec" aria-pressed="true">Empfohlen</button>
+        <button type="button" data-s="near" aria-pressed="false">Nächste</button>
+        <button type="button" data-s="cheap" aria-pressed="false">Günstigste</button>
+        <button type="button" data-s="date" aria-pressed="false">Nächster Termin</button>
+        <button type="button" data-s="rating" aria-pressed="false">Bewertung</button>
+        <button type="button" data-s="new" aria-pressed="false">Neueste</button>
+        <button type="button" class="tog" id="onlyFull" aria-pressed="false">Nur komplettes Setup</button>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="t-sum" id="tSum"></div>
+    <div id="combo"></div>
+    <div class="shops" id="shops"></div>
+  </div>
+</main>
+
+<!-- ===== AGB ===== -->
+<main class="view" id="v-agb">
+  <div class="wrap legaltext">
+    <a class="back" href="#start">← Zurück</a>
+    <h1>Allgemeine Geschäftsbedingungen</h1>
+    <p class="muted">Stand: November 2026</p>
+    <div class="note">Entwurf für die Demo-Version. Vor dem Livegang bitte von einer Rechtsanwältin oder einem Rechtsanwalt prüfen lassen.</div>
+
+    <h2>§ 1 Anbieter und Geltungsbereich</h2>
+    <p>Anbieter der Plattform „Tuneway“ ist Bela Flammer, E-Mail: <a href="mailto:BelaFlammer@icloud.com">BelaFlammer@icloud.com</a>, Telefon: <a href="tel:+491604578683">0160 4578683</a> (nachfolgend „Anbieter“). Diese AGB gelten für alle Nutzer der Plattform: Privatpersonen, die Tuning-Leistungen suchen („Kunden“), und Werkstätten bzw. Tuner, die sich auf der Plattform präsentieren („Partner“).</p>
+
+    <h2>§ 2 Leistung des Anbieters</h2>
+    <ol>
+      <li>Tuneway ist eine reine Vermittlungsplattform. Der Anbieter stellt Informationen über Partner und deren Leistungen bereit und leitet Anfragen von Kunden an Partner weiter.</li>
+      <li>Verträge über Tuning-, Umbau- oder Werkstattleistungen kommen ausschließlich zwischen Kunde und Partner zustande. Der Anbieter wird nicht Vertragspartei und erbringt selbst keine Werkstattleistungen.</li>
+      <li>Leistungs-, Fahrleistungs- und Preisangaben im Konfigurator sind unverbindliche Richtwerte. Verbindlich ist allein das Angebot des jeweiligen Partners.</li>
+    </ol>
+
+    <h2>§ 3 Nutzung durch Kunden</h2>
+    <ol>
+      <li>Die Nutzung der Plattform ist für Kunden kostenlos.</li>
+      <li>Mit dem Absenden einer Anfrage willigt der Kunde ein, dass die eingegebenen Daten (Name, Kontaktdaten, Fahrzeug, gewünschtes Setup) an den ausgewählten Partner übermittelt werden.</li>
+      <li>Der Kunde ist selbst dafür verantwortlich, dass Umbauten an seinem Fahrzeug ordnungsgemäß abgenommen und, soweit erforderlich, in die Fahrzeugpapiere eingetragen werden. Ohne erforderliche Eintragung kann die Betriebserlaubnis erlöschen.</li>
+    </ol>
+
+    <h2>§ 4 Teilnahme von Partnern</h2>
+    <ol>
+      <li>Partner können ausschließlich Unternehmer im Sinne des § 14 BGB sein.</li>
+      <li>Partner versichern, dass alle Angaben in ihrem Profil (Leistungen, Preise, Termine, Bilder) zutreffend und aktuell sind und dass sie die Rechte an hochgeladenen Bildern und Texten besitzen.</li>
+      <li>Partner bieten über die Plattform nur Umbauten an, die nach geltendem Recht zulässig, abnahmefähig bzw. eintragungsfähig sind, und weisen Kunden auf erforderliche Gutachten und Eintragungen hin.</li>
+      <li>Der Anbieter darf Profile prüfen und bei Verstößen gegen diese AGB oder geltendes Recht sperren oder entfernen.</li>
+    </ol>
+
+    <h2>§ 5 Abonnements und Preise für Partner</h2>
+    <ol>
+      <li>„Basis“: 19,90 € pro Monat. Eintrag in der Tuner-Liste und Anzeige in den Filtern.</li>
+      <li>„Pro“: 79,90 € pro Monat. Zusätzlich Kontaktformular, eigene Profilseite und hervorgehobene Platzierung.</li>
+      <li>Die genannten Preise verstehen sich zuzüglich der gesetzlichen Umsatzsteuer, sofern diese anfällt. Die Abrechnung erfolgt monatlich im Voraus.</li>
+      <li>Abonnements laufen jeweils einen Monat und verlängern sich automatisch um einen weiteren Monat, wenn sie nicht spätestens zum Ende des laufenden Monats gekündigt werden. Die Kündigung ist per E-Mail möglich.</li>
+    </ol>
+
+    <h2>§ 6 Bewertungen</h2>
+    <p>Kunden können Partner nach einer tatsächlich in Anspruch genommenen Leistung bewerten. Bewertungen müssen wahrheitsgemäß sein und dürfen keine beleidigenden oder rechtswidrigen Inhalte enthalten. Der Anbieter darf rechtswidrige Bewertungen entfernen.</p>
+
+    <h2>§ 7 Haftung</h2>
+    <ol>
+      <li>Für die Leistungen der Partner, insbesondere die Qualität von Umbauten, Termine und Preise, haftet allein der jeweilige Partner.</li>
+      <li>Der Anbieter haftet unbeschränkt bei Vorsatz und grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper und Gesundheit. Bei leicht fahrlässiger Verletzung wesentlicher Vertragspflichten ist die Haftung auf den vorhersehbaren, vertragstypischen Schaden begrenzt. Im Übrigen ist die Haftung bei leichter Fahrlässigkeit ausgeschlossen.</li>
+      <li>Der Anbieter übernimmt keine Gewähr für die ständige Verfügbarkeit der Plattform.</li>
+    </ol>
+
+    <h2>§ 8 Datenschutz</h2>
+    <p>Personenbezogene Daten werden nur zur Durchführung der Vermittlung verarbeitet. Einzelheiten regelt die Datenschutzerklärung.</p>
+
+    <h2>§ 9 Schlussbestimmungen</h2>
+    <ol>
+      <li>Es gilt das Recht der Bundesrepublik Deutschland unter Ausschluss des UN-Kaufrechts. Gegenüber Verbrauchern gilt diese Rechtswahl nur, soweit dadurch keine zwingenden Verbraucherschutzvorschriften des Staates ihres gewöhnlichen Aufenthalts entzogen werden.</li>
+      <li>Ist der Nutzer Kaufmann, ist Gerichtsstand der Sitz des Anbieters.</li>
+      <li>Sollte eine Bestimmung dieser AGB unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt.</li>
+    </ol>
+
+    <h2>Kontakt</h2>
+    <p>Bela Flammer<br>E-Mail: BelaFlammer@icloud.com<br>Telefon: 0160 4578683</p>
+  </div>
+</main>
+
+<!-- ===== Impressum ===== -->
+<main class="view" id="v-impressum">
+  <div class="wrap legaltext">
+    <a class="back" href="#start">← Zurück</a>
+    <h1>Impressum</h1>
+    <div class="note">Für eine öffentliche Website ist eine vollständige Postanschrift Pflicht. Bitte vor dem Livegang ergänzen.</div>
+    <h2>Angaben gemäß § 5 DDG</h2>
+    <p>Bela Flammer<br><span class="missing">[Straße und Hausnummer]</span><br><span class="missing">[PLZ und Ort]</span></p>
+    <h2>Kontakt</h2>
+    <p>Telefon: 0160 4578683<br>E-Mail: BelaFlammer@icloud.com</p>
+    <h2>Hinweis</h2>
+    <p>Alle in der Demo-Version gezeigten Tuner, Adressen, Bewertungen und Preise sind frei erfunden und dienen nur der Veranschaulichung.</p>
+  </div>
+</main>
+
+<div class="ctabar" id="ctabar">
+  <div class="wrap">
+    <div class="vals">
+      <div><small>Leistung</small><b class="num" id="cPs">0</b></div>
+      <div class="hide-s"><small>0–100</small><b class="num" id="cT">0</b></div>
+      <div><small>ab</small><b class="num" id="cP">–</b></div>
+    </div>
+    <button class="btn primary" type="button" id="go2">Bestätigen</button>
+  </div>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Tuner-Profil"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+const eur = n => Math.round(n).toLocaleString('de-DE') + ' €';
+const dec = (n,d=1) => n.toFixed(d).replace('.',',');
+
+/* ================= Fahrzeuge (Herstellerangaben) ================= */
+// brand, model, series, variant, engine, years, ps, nm, t (0-100), vmax, vmaxOpen (Begrenzer offen), kg (leer EU), trans, na (Sauger)
+const RAW = [
+ ['BMW','1er','F20','M140i','3.0 R6 Turbo (B58)','2016–2019',340,500,4.6,250,270,1475,'Automatik'],
+ ['BMW','M2','F87','M2','3.0 R6 Turbo (N55)','2016–2018',370,465,4.3,250,270,1495,'DKG'],
+ ['BMW','M2','F87','M2 Competition','3.0 R6 Biturbo (S55)','2018–2021',410,550,4.2,250,280,1550,'DKG'],
+ ['BMW','M2','F87','M2 CS','3.0 R6 Biturbo (S55)','2020–2021',450,550,4.0,280,300,1550,'DKG'],
+ ['BMW','M2','G87','M2','3.0 R6 Biturbo (S58)','2023–2024',460,550,4.1,250,285,1725,'Automatik'],
+ ['BMW','3er','G20','M340i xDrive','3.0 R6 Turbo (B58)','2019–2022',374,500,4.4,250,270,1745,'Automatik'],
+ ['BMW','M3','F80','M3 Competition','3.0 R6 Biturbo (S55)','2016–2018',450,550,4.0,250,280,1560,'DKG'],
+ ['BMW','M3','G80','M3 Competition xDrive','3.0 R6 Biturbo (S58)','2021–2024',510,650,3.5,250,290,1805,'Automatik'],
+ ['BMW','M4','G82','M4 Competition','3.0 R6 Biturbo (S58)','2021–2024',510,650,3.9,250,290,1725,'Automatik'],
+ ['BMW','M5','F90','M5 Competition','4.4 V8 Biturbo (S63)','2018–2020',625,750,3.3,250,305,1940,'Automatik'],
+ ['Audi','S3','8V','S3 Sportback','2.0 TFSI R4','2016–2020',310,400,4.6,250,270,1520,'S tronic'],
+ ['Audi','RS3','8V','RS3 Sportback','2.5 TFSI R5','2017–2020',400,480,4.1,250,280,1585,'S tronic'],
+ ['Audi','RS3','8Y','RS3 Sportback','2.5 TFSI R5','2021–2024',400,500,3.8,250,290,1645,'S tronic'],
+ ['Audi','TT RS','8S','TT RS Coupé','2.5 TFSI R5','2016–2023',400,480,3.7,250,280,1450,'S tronic'],
+ ['Audi','RS4','B9','RS4 Avant','2.9 V6 Biturbo','2018–2024',450,600,4.1,250,280,1790,'Tiptronic'],
+ ['Audi','RS6','C8','RS6 Avant','4.0 V8 Biturbo','2019–2024',600,800,3.6,250,305,2075,'Tiptronic'],
+ ['VW','Golf','Golf 7','GTI Performance','2.0 TSI R4 (EA888)','2017–2020',245,370,6.2,250,255,1415,'DSG'],
+ ['VW','Golf','Golf 7','GTI TCR','2.0 TSI R4 (EA888)','2019–2020',290,370,5.6,250,264,1410,'DSG'],
+ ['VW','Golf','Golf 7','R','2.0 TSI R4 (EA888)','2017–2020',300,400,4.6,250,267,1505,'DSG'],
+ ['VW','Golf','Golf 8','GTI','2.0 TSI R4 (EA888 evo4)','2020–2024',245,370,6.3,250,260,1460,'DSG'],
+ ['VW','Golf','Golf 8','R','2.0 TSI R4 (EA888 evo4)','2020–2024',320,420,4.7,250,270,1551,'DSG'],
+ ['VW','Polo','AW','GTI','2.0 TSI R4','2021–2024',207,320,6.5,240,240,1355,'DSG'],
+ ['Mercedes-AMG','A-Klasse','W176','A 45 4MATIC','2.0 R4 Turbo (M133)','2015–2018',381,475,4.2,250,270,1555,'Speedshift DCT'],
+ ['Mercedes-AMG','A-Klasse','W177','A 45 S 4MATIC+','2.0 R4 Turbo (M139)','2019–2024',421,500,3.9,270,290,1635,'Speedshift DCT'],
+ ['Mercedes-AMG','C-Klasse','W205','C 63 S','4.0 V8 Biturbo (M177)','2018–2021',510,700,4.0,250,290,1730,'Speedshift MCT'],
+ ['Mercedes-AMG','E-Klasse','W213','E 63 S 4MATIC+','4.0 V8 Biturbo (M177)','2017–2023',612,850,3.4,250,300,1955,'Speedshift MCT'],
+ ['Porsche','718','982','Cayman GTS 4.0','4.0 B6 Sauger','2020–2024',400,420,4.5,293,293,1405,'PDK',1],
+ ['Porsche','911','991.2','Carrera S','3.0 B6 Biturbo','2016–2019',420,500,3.9,308,308,1515,'PDK'],
+ ['Porsche','911','992','Carrera S','3.0 B6 Biturbo','2019–2024',450,530,3.5,308,308,1515,'PDK'],
+ ['Porsche','911','992','Turbo S','3.7 B6 Biturbo','2020–2024',650,800,2.7,330,330,1640,'PDK'],
+ ['Porsche','Macan','95B','Macan S','2.9 V6 Biturbo','2019–2021',380,520,4.8,259,259,1865,'PDK'],
+ ['Cupra','Leon','KL','VZ 300','2.0 TSI R4','2021–2024',300,400,5.7,250,265,1460,'DSG'],
+ ['Cupra','Formentor','KM','VZ 310 4Drive','2.0 TSI R4','2021–2024',310,400,4.9,250,265,1644,'DSG'],
+ ['Ford','Focus','Mk3','RS','2.3 EcoBoost R4','2016–2018',350,470,4.7,266,266,1599,'Schaltgetriebe'],
+ ['Ford','Focus','Mk4','ST','2.3 EcoBoost R4','2019–2024',280,420,5.7,250,260,1508,'Schaltgetriebe'],
+ ['Ford','Fiesta','Mk8','ST','1.5 EcoBoost R3','2018–2023',200,320,6.5,232,232,1262,'Schaltgetriebe'],
+ ['Toyota','GR Yaris','XP21','GR Yaris','1.6 R3 Turbo (G16E)','2020–2024',261,360,5.5,230,230,1280,'Schaltgetriebe'],
+ ['Hyundai','i30 N','PDE','Performance DCT','2.0 T-GDi R4','2021–2024',280,392,5.4,250,260,1509,'DCT'],
+ ['Nissan','GT-R','R35','GT-R (MY17)','3.8 V6 Biturbo (VR38DETT)','2017–2024',570,637,2.8,315,315,1752,'DCT']
+];
+const CARS = RAW.map((r,i)=>({id:'c'+i,brand:r[0],model:r[1],series:r[2],variant:r[3],engine:r[4],years:r[5],ps:r[6],nm:r[7],t:r[8],vmax:r[9],vmaxOpen:r[10],kg:r[11],trans:r[12],na:!!r[13],manual:r[12]==='Schaltgetriebe'}));
+
+/* ================= Tuning-Optionen ================= */
+// price = Basispreis; tatsaechlicher Preis = Basispreis x Fahrzeugklasse x Preisfaktor des Tuners
+const CATS = [['perf','Leistung'],['sound','Sound & Abgas'],['feel','Fahrgefühl'],['brake','Bremsen'],['wheel','Räder & Reifen'],['aero','Optik & Aero'],['inside','Innenraum']];
+const PARTS = [
+ {id:'st1',cat:'perf',name:'Software Stage 1',ps:.20,nm:.22,price:890,legal:'gut',grp:'stage'},
+ {id:'st2',cat:'perf',name:'Software Stage 2',ps:.30,nm:.33,price:1190,legal:'gut',grp:'stage',req:['llk','dp'],turbo:1},
+ {id:'st3',cat:'perf',name:'Software Stage 3',ps:.45,nm:.45,price:1690,legal:'gut',grp:'stage',req:['llk','dp','turbo','fuel'],turbo:1},
+ {id:'llk',cat:'perf',name:'Ladeluftkühler',hp:.01,price:890,legal:'gut',turbo:1,tag:'Konstante Leistung'},
+ {id:'dp',cat:'perf',name:'Downpipe Sport-Kat',hp:.02,price:1290,legal:'gut',turbo:1},
+ {id:'ansaug',cat:'perf',name:'Carbon-Ansaugung',hp:.01,price:590,legal:'abe',snd:1},
+ {id:'turbo',cat:'perf',name:'Turbo-Upgrade',price:4500,legal:'gut',turbo:1,tag:'Für Stage 3'},
+ {id:'fuel',cat:'perf',name:'Hochdruckpumpe',price:1200,legal:'gut',turbo:1,tag:'Für Stage 3'},
+ {id:'oel',cat:'perf',name:'Ölkühler',price:790,legal:'abe',tag:'Standfest'},
+ {id:'vmax',cat:'perf',name:'V-max offen',price:290,legal:'gut',tag:'Begrenzer raus'},
+ {id:'gbx',cat:'perf',name:'Getriebe-Software',price:690,legal:'gut',trac:.97,tag:'Schneller schalten'},
+ {id:'abgas',cat:'sound',name:'Titan-Klappenanlage',hp:.01,kg:-9,snd:3,price:3900,legal:'abe',grp:'exh'},
+ {id:'esd',cat:'sound',name:'Sport-Endschalldämpfer',snd:2,price:1490,legal:'abe',grp:'exh'},
+ {id:'klappe',cat:'sound',name:'Klappensteuerung App',snd:1,price:390,legal:'abe'},
+ {id:'gw',cat:'feel',name:'Gewindefahrwerk',price:2290,legal:'abe',grp:'susp',tag:'Tiefer + straffer'},
+ {id:'fed',cat:'feel',name:'Sportfedern',price:490,legal:'abe',grp:'susp',tag:'-30 mm'},
+ {id:'stabi',cat:'feel',name:'Sport-Stabis',price:690,legal:'abe',tag:'Weniger Rollen'},
+ {id:'lsd',cat:'feel',name:'Sperrdifferenzial',price:2490,legal:'abe',trac:.96},
+ {id:'lager',cat:'feel',name:'Motor- & Getriebelager',price:490,legal:'abe',tag:'Direkter'},
+ {id:'dom',cat:'feel',name:'Carbon-Domstrebe',kg:-1,price:390,legal:'abe'},
+ {id:'bbk',cat:'brake',name:'Big Brake Kit 6-Kolben',kg:-3,price:4900,legal:'gut',tag:'Kürzer bremsen'},
+ {id:'belag',cat:'brake',name:'Sportbeläge + Stahlflex',price:590,legal:'abe',tag:'Standfest'},
+ {id:'forged',cat:'wheel',name:'Schmiedefelgen',kg:-12,price:4500,legal:'abe'},
+ {id:'semi',cat:'wheel',name:'Semi-Slicks',price:1600,legal:'abe',trac:.94},
+ {id:'spur',cat:'wheel',name:'Spurverbreiterung',price:290,legal:'abe',tag:'Breiter'},
+ {id:'splitter',cat:'aero',name:'Carbon-Frontsplitter',kg:-1,price:990,legal:'abe',tag:'Abtrieb'},
+ {id:'diff',cat:'aero',name:'Carbon-Diffusor',price:1190,legal:'abe',tag:'Abtrieb'},
+ {id:'wing',cat:'aero',name:'GT-Heckflügel',kg:3,price:1890,legal:'gut',tag:'Abtrieb'},
+ {id:'hood',cat:'aero',name:'Carbon-Motorhaube',kg:-9,price:2900,legal:'gut'},
+ {id:'folie',cat:'aero',name:'Vollfolierung',price:3200,legal:'abe',tag:'Neue Farbe'},
+ {id:'sitze',cat:'inside',name:'Carbon-Schalensitze',kg:-22,price:3800,legal:'gut'},
+ {id:'lenk',cat:'inside',name:'Carbon-Lenkrad',price:890,legal:'abe',tag:'Alcantara'},
+ {id:'cage',cat:'inside',name:'Clubsport-Paket',kg:14,price:2400,legal:'gut',tag:'Bügel + Gurte'}
+];
+const P = Object.fromEntries(PARTS.map(p=>[p.id,p]));
+const GRP = {}; PARTS.forEach(p=>{ if(p.grp)(GRP[p.grp]=GRP[p.grp]||[]).push(p.id); });
+const BY = cat => PARTS.filter(p=>p.cat===cat).map(p=>p.id);
+
+/* ================= Beispiel-Tuner (erfunden) ================= */
+const ALLB = ['BMW','Audi','VW','Mercedes-AMG','Porsche','Cupra','Ford','Toyota','Hyundai','Nissan'];
+const ALLP = PARTS.map(p=>p.id);
+const TUNERS = [
+ {id:1, name:'Kaltwerk Motorsport',  city:'Siegburg',          km:6,  rating:4.9,reviews:212,plan:'pro',  brands:['BMW','Mercedes-AMG','Porsche'], parts:ALLP, pf:1.10, since:2011, c:['#ff2a1f','#ff7a00'], tag:'BMW-M-Spezialist mit Allrad-Prüfstand'},
+ {id:2, name:'Vulkan Tuning',        city:'Bonn',              km:14, rating:4.7,reviews:154,plan:'pro',  brands:['Audi','VW','Cupra'], parts:[...BY('perf'),...BY('sound'),...BY('feel'),...BY('wheel')], pf:0.97, since:2009, c:['#ff5a00','#ffc400'], tag:'Fünfzylinder und EA888 sind unser Alltag'},
+ {id:3, name:'Ladedruck Werkstatt',  city:'Köln-Porz',         km:19, rating:4.6,reviews:98, plan:'basic',brands:['VW','Audi','BMW','Mercedes-AMG','Cupra','Ford'], parts:['st1','st2','llk','dp','ansaug','vmax','gbx',...BY('sound')], pf:0.88},
+ {id:4, name:'Asphaltlabor',         city:'Overath',           km:9,  rating:4.8,reviews:76, plan:'pro',  brands:['Porsche','BMW','Audi','Toyota'], parts:['st1','vmax','oel',...BY('sound'),...BY('feel'),...BY('brake'),...BY('wheel'),...BY('inside')], pf:1.15, since:2016, c:['#ffc400','#ff2a1f'], tag:'Fahrwerk, Bremse und Track-Setups'},
+ {id:5, name:'Drehzahl Manufaktur',  city:'Much',              km:11, rating:4.4,reviews:41, plan:'basic',brands:['BMW','VW','Ford','Hyundai'], parts:['st1','st2','llk','dp','ansaug',...BY('sound'),'fed','gw'], pf:0.86},
+ {id:6, name:'Grenzbereich Performance',city:'Bergisch Gladbach',km:17,rating:4.5,reviews:63, plan:'basic',brands:['Mercedes-AMG','Audi','VW','Nissan'], parts:[...BY('perf')], pf:0.93},
+ {id:7, name:'Nordkurve Engineering',city:'Köln-Ehrenfeld',    km:24, rating:4.8,reviews:187,plan:'pro',  brands:ALLB, parts:ALLP, pf:1.02, since:2013, c:['#ff2a1f','#ffc400'], tag:'Komplettumbauten bis 900 PS'},
+ {id:8, name:'Schwarzwert Garage',   city:'Hennef',            km:8,  rating:4.3,reviews:29, plan:'basic',brands:['VW','Audi','Cupra','Hyundai','Ford','Toyota'], parts:['st1','ansaug',...BY('sound'),...BY('wheel'),...BY('aero')], pf:0.82},
+ {id:9, name:'Carbonhaus',           city:'Rösrath',           km:7,  rating:4.6,reviews:52, plan:'basic',brands:ALLB, parts:[...BY('aero'),...BY('inside'),'forged','spur'], pf:0.95},
+ {id:10,name:'Sperrzone Garage',     city:'Troisdorf',         km:10, rating:4.7,reviews:88, plan:'pro',  brands:['BMW','Toyota','Ford','Nissan','Hyundai'], parts:[...BY('perf'),...BY('feel'),...BY('brake'),...BY('wheel')], pf:1.0, since:2015, c:['#ff7a00','#ff2a1f'], tag:'Track-Days, Allrad und Sperren'}
+];
+
+const BASIC_C = ['#5d4a40','#8d5a3a'];
+const ADDR = {1:'Beispielstraße 14, 53721 Siegburg',2:'Musterweg 7, 53117 Bonn',3:'Beispielstraße 22, 51149 Köln',4:'Gewerbering 3, 51491 Overath',5:'Musterstraße 101, 53804 Much',6:'Beispielweg 5, 51429 Bergisch Gladbach',7:'Musterallee 30, 50827 Köln',8:'Beispielstraße 88, 53773 Hennef',9:'Musterplatz 2, 51503 Rösrath',10:'Gewerbestraße 9, 53842 Troisdorf'};
+const JOINED = {1:'2026-03',2:'2026-01',3:'2026-06',4:'2026-09',5:'2026-04',6:'2026-08',7:'2026-02',8:'2026-10',9:'2026-07',10:'2026-05'};
+
+/* ================= Zustand ================= */
+const DEF = {carId:CARS.find(c=>c.variant==='M2 Competition').id, plz:'53797', parts:[], goal:null};
+let saved={}; try{ saved=JSON.parse(localStorage.getItem('tuneway')||'{}'); }catch(e){}
+const state = {carId:saved.carId&&CARS.some(c=>c.id===saved.carId)?saved.carId:DEF.carId, plz:saved.plz||DEF.plz, parts:new Set(saved.parts||[]), sort:'rec', q:'', onlyFull:false, goal:{ps:0,vmax:0,t:0}};
+function save(){ try{ localStorage.setItem('tuneway', JSON.stringify({carId:state.carId, plz:state.plz, parts:[...state.parts]})); }catch(e){} }
+const car = () => CARS.find(c=>c.id===state.carId);
+const cls = c => Math.min(1.6, Math.max(.8, .8 + (c.ps-200)/560));
+function avail(id,c=car()){
+  const p=P[id];
+  if(c.na&&p.turbo) return 'Saugmotor';
+  if(id==='gbx'&&c.manual) return 'Schaltgetriebe';
+  if(id==='vmax'&&c.vmax>=c.vmaxOpen) return 'Ab Werk offen';
+  if(!TUNERS.some(t=>t.brands.includes(c.brand)&&t.parts.includes(id))) return 'Kein Anbieter';
+  return '';
+}
+function stageOf(set){ return set.has('st3')?3:set.has('st2')?2:set.has('st1')?1:0; }
+
+/* ================= Rechnung ================= */
+const HANDLING={gw:1.4,fed:.6,stabi:.7,lsd:1,lager:.3,dom:.2,semi:1.2,forged:.4,spur:.3,splitter:.3,diff:.3,wing:.6,cage:.3,sitze:.2};
+const BRAKES={bbk:2.4,belag:1,semi:.8,forged:.3,wing:.3};
+function calc(set){
+  const c=car(), st=stageOf(set), na=c.na?.25:1;
+  const sp=[0,.20,.30,.45][st]*na, sn=[0,.22,.33,.45][st]*na;
+  let hp=0,kg=0,trac=1,snd=1,han=0,brk=0;
+  set.forEach(id=>{ const p=P[id]; hp+=p.hp||0; kg+=p.kg||0; if(p.trac) trac*=p.trac; snd+=p.snd||0; han+=HANDLING[id]||0; brk+=BRAKES[id]||0; });
+  if(!st) hp*=.5;
+  const ps=Math.round(c.ps*(1+sp+hp)), nm=Math.round(c.nm*(1+sn+hp*1.2));
+  let t=c.t*Math.pow(c.ps/ps,.55)*trac*Math.pow((c.kg+kg)/c.kg,.5); t=Math.round(Math.max(t,c.t*.7,2.2)*10)/10;
+  const open=set.has('vmax')||c.vmax>=c.vmaxOpen; let v=c.vmax;
+  if(open){ v=Math.min(c.vmaxOpen*Math.pow(ps/c.ps,1/3),c.vmaxOpen*1.12); if(set.has('wing')) v*=.98; v=Math.max(Math.round(v),c.vmax); }
+  return {st,ps,nm,t,vmax:v,kg:c.kg+kg,dkg:kg,snd:Math.min(snd,6),han,brk};
+}
+function tunerPrice(t,id,c=car()){ return Math.round(P[id].price*cls(c)*t.pf/10)*10; }
+function minPrice(id){ const c=car(), o=TUNERS.filter(t=>t.brands.includes(c.brand)&&t.parts.includes(id)); return o.length?Math.min(...o.map(t=>tunerPrice(t,id))):0; }
+function tuevFee(set){ if(!set.size) return 0; return [...set].some(id=>P[id].legal==='gut')?450:120; }
+
+const SOLVE=['st1','st2','st3','llk','dp','turbo','fuel','vmax','gbx','lsd','semi'];
+function withReq(set){ set.forEach(id=>(P[id].req||[]).forEach(r=>set.add(r))); return set; }
+function maxSet(){ const s=new Set(); ['st3','st2','st1'].some(id=>{ if(!avail(id)){ s.add(id); return true; } }); ['vmax','gbx','lsd','semi'].forEach(id=>{ if(!avail(id)) s.add(id); }); return withReq(s); }
+function solve(){
+  const c=car(), G=state.goal, keep=[...state.parts].filter(id=>!SOLVE.includes(id)); let best=null;
+  for(let s=0;s<=3;s++){ if(s&&avail('st'+s)) continue;
+    for(let v=0;v<2;v++){ if(v&&avail('vmax')) continue;
+      for(let m=0;m<8;m++){ const tr=['gbx','lsd','semi'].filter((_,i)=>m&(1<<i)); if(tr.some(id=>avail(id))) continue;
+        const set=new Set(keep); if(s) set.add('st'+s); if(v) set.add('vmax'); tr.forEach(id=>set.add(id)); withReq(set);
+        const r=calc(set);
+        if(G.ps>c.ps&&r.ps<G.ps) continue; if(G.vmax>c.vmax&&r.vmax<G.vmax) continue; if(G.t<c.t&&r.t>G.t+1e-9) continue;
+        const cost=[...set].filter(id=>!keep.includes(id)).reduce((a,id)=>a+minPrice(id),0);
+        if(!best||cost<best.cost) best={set,cost,r}; }}}
+  return best;
+}
+
+/* ================= Auto (eigene Zeichnung, kein echtes Modell) ================= */
+let U=0;
+const BODY='M24 158 L22 120 Q22 106 34 104 L150 99 C175 90 195 74 218 69 L328 66 C350 66 372 80 402 97 L560 107 Q596 111 602 120 L605 148 Q604 158 594 158 L546 158 A46 46 0 0 0 454 158 L178 158 A46 46 0 0 0 86 158 Z';
+function carDefs(u,c1,c2){
+  return `<linearGradient id="b${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a423e"/><stop offset=".18" stop-color="#2a2421"/><stop offset=".45" stop-color="#151211"/><stop offset=".62" stop-color="#211c1a"/><stop offset=".7" stop-color="#0e0c0b"/><stop offset="1" stop-color="#050404"/></linearGradient>
+  <linearGradient id="e${u}" x1="0" x2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>
+  <linearGradient id="gl${u}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b2f36"/><stop offset=".45" stop-color="#0b0c0e"/><stop offset=".5" stop-color="#3a3f47"/><stop offset=".56" stop-color="#0b0c0e"/><stop offset="1" stop-color="#050506"/></linearGradient>
+  <linearGradient id="s${u}" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <radialGradient id="ti${u}"><stop offset=".7" stop-color="#0a0a0a"/><stop offset=".86" stop-color="#232323"/><stop offset=".95" stop-color="#121212"/><stop offset="1" stop-color="#050505"/></radialGradient>
+  <radialGradient id="ds${u}"><stop offset="0" stop-color="#4a4644"/><stop offset=".7" stop-color="#6d6865"/><stop offset="1" stop-color="#3b3735"/></radialGradient>
+  <linearGradient id="sp${u}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1ede8"/><stop offset=".5" stop-color="#a59e97"/><stop offset="1" stop-color="#5e5853"/></linearGradient>
+  <radialGradient id="ug${u}"><stop offset="0" stop-color="${c2}" stop-opacity=".85"/><stop offset=".6" stop-color="${c1}" stop-opacity=".2"/><stop offset="1" stop-color="${c1}" stop-opacity="0"/></radialGradient>
+  <linearGradient id="hb${u}" x1="0" x2="1"><stop offset="0" stop-color="#ffe9c4" stop-opacity=".45"/><stop offset="1" stop-color="#ffe9c4" stop-opacity="0"/></linearGradient>
+  <filter id="bl${u}" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="6"/></filter>
+  <clipPath id="cp${u}"><path d="${BODY}"/></clipPath>`;
+}
+function wheelSVG(u,x,c1,id){
+  const spokes=Array.from({length:5},(_,i)=>{ const a=i*72*Math.PI/180; const pts=[[-.16,7],[-.07,26],[.07,26],[.16,7]].map(([da,r])=>`${(Math.cos(a+da)*r).toFixed(1)},${(Math.sin(a+da)*r).toFixed(1)}`).join(' '); const pts2=[[.2,7],[.29,26],[.43,26],[.52,7]].map(([da,r])=>`${(Math.cos(a+da)*r).toFixed(1)},${(Math.sin(a+da)*r).toFixed(1)}`).join(' '); return `<polygon points="${pts}" fill="url(#sp${u})"/><polygon points="${pts2}" fill="url(#sp${u})"/>`; }).join('');
+  return `<g ${id?`id="${id}"`:''} transform="translate(${x} 160)">
+    <circle r="40" fill="url(#ti${u})"/>
+    <circle r="29.5" fill="#0c0b0b"/>
+    <circle r="22" fill="url(#ds${u})"/><circle r="22" fill="none" stroke="#2b2826" stroke-width="1" stroke-dasharray="1 3"/>
+    <path d="M-17 -15 A23 23 0 0 1 4 -23 L4 -15 A15 15 0 0 0 -11 -9 Z" fill="${c1}"/>
+    <g class="wspin">${spokes}<circle r="29" fill="none" stroke="url(#sp${u})" stroke-width="2.4"/><circle r="7.5" fill="#1d1b1a" stroke="#8d8781" stroke-width="1"/><circle r="2.6" fill="${c1}"/></g>
+  </g>`;
+}
+function carInner(u,c1,c2,o={}){
+  return `<g ${o.gid?`id="${o.gid}"`:''}>
+  ${o.glow?`<ellipse cx="318" cy="168" rx="250" ry="14" fill="url(#ug${u})"/>`:''}
+  <path d="M38 84 L124 79 L126 88 L40 93 Z" fill="#161312" stroke="#2c2522" stroke-width="1"/>
+  <path d="M38 84 L124 79" stroke="url(#e${u})" stroke-width="1.2"/>
+  <path d="M58 92 L54 104 M106 88 L102 101" stroke="#1d1918" stroke-width="5"/>
+  <g ${o.exh?`id="${o.exh}"`:''}><rect x="28" y="148" width="22" height="9" rx="4.5" fill="#6b6560"/><ellipse cx="29" cy="152.5" rx="3" ry="4.5" fill="#0a0909"/></g>
+  <path d="${BODY}" fill="url(#b${u})"/>
+  <path d="M150 99 C175 90 195 74 218 69 L328 66 C350 66 372 80 402 97 L560 107 Q590 110 600 118" stroke="rgba(255,255,255,.38)" stroke-width="1.4" fill="none"/>
+  <path d="M162 98 C186 88 204 76 222 73 L326 71 C344 72 360 82 384 97 Z" fill="url(#gl${u})" stroke="#2c2522" stroke-width="1.2"/>
+  <path d="M276 71 L272 98" stroke="#120f0e" stroke-width="5"/>
+  <path d="M384 96 l12 -2 l3 8 l-12 3 z" fill="#1c1817" stroke="#34302d" stroke-width=".8"/>
+  <path d="M292 100 L294 150 M180 151 L452 151" stroke="#000" stroke-width="1.2" opacity=".55"/>
+  <rect x="310" y="111" width="18" height="3" rx="1.5" fill="#3b3532"/>
+  <path d="M180 150 L452 150 L450 158 L182 158 Z" fill="#070606"/>
+  <path d="M560 150 L606 148 L604 156 L566 158 Z" fill="#070606"/>
+  <path d="M30 122 C200 112 430 110 600 124" stroke="url(#e${u})" stroke-width="1" fill="none" opacity=".5"/>
+  <path d="M410 118 l26 0 l-4 7 l-26 0z" fill="#070606"/>
+  <g clip-path="url(#cp${u})"><path class="sweep" d="M-60 40 L40 40 L-20 175 L-120 175 Z" fill="url(#s${u})"/></g>
+  <rect x="22" y="110" width="22" height="7" fill="${c1}" style="filter:drop-shadow(0 0 7px ${c1})"/>
+  <rect x="48" y="110" width="22" height="7" fill="${c1}" opacity=".85"/>
+  <path d="M566 112 L600 118 L600 124 L564 119 Z" fill="#fff4dc" style="filter:drop-shadow(0 0 5px #ffd79a)"/>
+  ${o.beam?`<path d="M600 119 L660 110 L660 142 L600 126 Z" fill="url(#hb${u})"/>`:''}
+  ${wheelSVG(u,132,c1,o.rear)}${wheelSVG(u,500,c1,o.front)}
+  </g>`;
+}
+function carSVG(c1,c2,o={}){
+  const u='k'+(U++);
+  return `<svg class="car${o.moving?' moving':''}" viewBox="0 20 660 200" aria-hidden="true"><defs>${carDefs(u,c1,c2)}</defs>
+  <ellipse cx="318" cy="200" rx="290" ry="10" fill="#000" opacity=".85" filter="url(#bl${u})"/>
+  ${carInner(u,c1,c2,{glow:o.glow,beam:o.beam})}</svg>`;
+}
+const bannerBG=(c1,c2)=>`background:radial-gradient(90% 80% at 50% 120%, ${c2}55, transparent 60%), radial-gradient(60% 70% at 0% 0%, ${c1}30, transparent 60%), linear-gradient(180deg,#0d0b0a,#050404)`;
+
+/* ================= Szenen: Cockpit, Hebebuehne, Mechaniker ================= */
+function gauge(cx,cy,r,max,major,minor,redFrom,unit,id){
+  const A=a=>(135+270*a)*Math.PI/180;
+  let s=`<circle cx="${cx}" cy="${cy}" r="${r+11}" fill="url(#chrome)"/><circle cx="${cx}" cy="${cy}" r="${r+6}" fill="#050404"/><circle cx="${cx}" cy="${cy}" r="${r+3}" fill="url(#face)"/>`;
+  if(redFrom!=null){ const a0=A(redFrom/max),a1=A(1),rr=r-4; s+=`<path d="M${cx+Math.cos(a0)*rr} ${cy+Math.sin(a0)*rr} A${rr} ${rr} 0 0 1 ${cx+Math.cos(a1)*rr} ${cy+Math.sin(a1)*rr}" stroke="#e01b12" stroke-width="7" fill="none"/>`; }
+  s+=`<g class="lit" style="filter:drop-shadow(0 0 2px rgba(255,140,60,.8))">`;
+  for(let v=0;v<=max+1e-6;v+=minor){
+    const a=A(v/max), big=Math.abs(v/major-Math.round(v/major))<1e-6, r2=r-(big?13:7), red=redFrom!=null&&v>=redFrom;
+    s+=`<line x1="${(cx+Math.cos(a)*r).toFixed(1)}" y1="${(cy+Math.sin(a)*r).toFixed(1)}" x2="${(cx+Math.cos(a)*r2).toFixed(1)}" y2="${(cy+Math.sin(a)*r2).toFixed(1)}" stroke="${red?'#ff3b2f':'#ffe7cf'}" stroke-width="${big?2.4:1.1}"/>`;
+    if(big){ const lr=r-25; s+=`<text x="${(cx+Math.cos(a)*lr).toFixed(1)}" y="${(cy+Math.sin(a)*lr+4.5).toFixed(1)}" fill="${red?'#ff3b2f':'#ffe7cf'}" font-family="Barlow Condensed,Arial Narrow,sans-serif" font-weight="700" font-size="13.5" text-anchor="middle">${v}</text>`; }
+  }
+  s+=`<text x="${cx}" y="${cy+r*.45}" fill="#ff7a1a" font-family="Barlow Condensed,Arial Narrow,sans-serif" font-size="10" letter-spacing="1.5" text-anchor="middle">${unit}</text></g>`;
+  s+=`<g id="${id}" style="transform-origin:${cx}px ${cy}px;transform:rotate(135deg)"><path d="M${cx-12} ${cy-2.5} L${cx+r-8} ${cy-.8} L${cx+r-8} ${cy+.8} L${cx-12} ${cy+2.5} Z" fill="#ff5a14" style="filter:drop-shadow(0 0 4px #ff5a14) drop-shadow(2px 3px 2px rgba(0,0,0,.7))"/></g>
+  <circle cx="${cx}" cy="${cy}" r="10" fill="url(#chrome)"/><circle cx="${cx}" cy="${cy}" r="5" fill="#0d0b0a"/>
+  <path d="M${cx-r} ${cy-10} A${r} ${r} 0 0 1 ${cx+r*.4} ${cy-r*.92} Q${cx-r*.2} ${cy-r*.45} ${cx-r} ${cy-10} Z" fill="url(#glass)"/>`;
+  return s;
+}
+function smallGauge(cx,cy,r,label){
+  let s=`<circle cx="${cx}" cy="${cy}" r="${r+5}" fill="url(#chrome)"/><circle cx="${cx}" cy="${cy}" r="${r+1}" fill="url(#face)"/>`;
+  for(let i=0;i<=8;i++){ const a=(150+240*i/8)*Math.PI/180; s+=`<line class="lit" x1="${(cx+Math.cos(a)*r).toFixed(1)}" y1="${(cy+Math.sin(a)*r).toFixed(1)}" x2="${(cx+Math.cos(a)*(r-5)).toFixed(1)}" y2="${(cy+Math.sin(a)*(r-5)).toFixed(1)}" stroke="#ffe7cf" stroke-width="1"/>`; }
+  s+=`<text class="lit" x="${cx}" y="${cy+r*.55}" fill="#ff7a1a" font-family="Barlow Condensed,Arial Narrow,sans-serif" font-size="7.5" letter-spacing="1" text-anchor="middle">${label}</text>
+  <line x1="${cx}" y1="${cy}" x2="${cx-r*.7}" y2="${cy+r*.3}" stroke="#ff5a14" stroke-width="2" class="lit"/><circle cx="${cx}" cy="${cy}" r="3" fill="#8d8781"/>`;
+  return s;
+}
+function cockpitSVG(){
+  const cx=240, cy=300; let holes='';
+  [[-1,0],[1,0],[0,1]].forEach(([dx,dy])=>{ for(let k=0;k<3;k++){ const d=50+k*19; holes+=`<circle cx="${cx+dx*d}" cy="${cy+dy*d}" r="${5.2-k*.8}" fill="#060505" stroke="#9c958e" stroke-width=".6"/>`; } });
+  const spoke=(pts)=>`<polygon points="${pts}" fill="url(#alu)" stroke="#3a3632" stroke-width=".8"/>`;
+  return `<svg class="cockpit" viewBox="0 0 480 380" aria-hidden="true"><defs>
+    <radialGradient id="face" cx="50%" cy="38%"><stop offset="0" stop-color="#1e1614"/><stop offset="1" stop-color="#050404"/></radialGradient>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6e2dd"/><stop offset=".3" stop-color="#6c6763"/><stop offset=".55" stop-color="#c9c4be"/><stop offset="1" stop-color="#2b2826"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="alu" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f8a84"/><stop offset=".42" stop-color="#e2ddd7"/><stop offset=".52" stop-color="#a39d96"/><stop offset="1" stop-color="#4c4844"/></linearGradient>
+    <radialGradient id="leather" cx="50%" cy="30%"><stop offset="0" stop-color="#2c2522"/><stop offset="1" stop-color="#0b0908"/></radialGradient>
+    <linearGradient id="dash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1715"/><stop offset=".12" stop-color="#0f0d0c"/><stop offset="1" stop-color="#060505"/></linearGradient>
+    <radialGradient id="amb" cx="50%" cy="50%"><stop offset="0" stop-color="#ff6a00" stop-opacity=".2"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path d="M0 210 Q0 120 70 112 Q240 92 410 112 Q480 120 480 210 L480 380 L0 380 Z" fill="#070606"/>
+  <path d="M36 228 C34 90 110 50 240 48 C370 50 446 90 444 228 Z" fill="url(#dash)" stroke="#2a2422" stroke-width="1.5"/>
+  <path d="M60 80 C130 56 350 56 420 80" stroke="rgba(255,255,255,.08)" stroke-width="2" fill="none"/>
+  <ellipse cx="240" cy="150" rx="210" ry="95" fill="url(#amb)" class="lit"/>
+  ${gauge(140,152,78,280,40,10,null,'km/h','ndlSpd')}
+  ${gauge(340,152,78,9,1,.5,7.5,'×1000 r/min','ndlTach')}
+  ${smallGauge(240,176,20,'BOOST')}
+  <g id="shift">${[0,1,2,3,4].map(i=>`<circle cx="${216+i*12}" cy="96" r="4" fill="#211b19"/>`).join('')}</g>
+  <g class="lit"><rect x="216" y="114" width="48" height="20" rx="2" fill="#0b0908" stroke="#3a2f2a"/>
+  <text x="240" y="129" fill="#ff2a1f" font-family="Archivo,Arial,sans-serif" font-weight="800" font-style="italic" font-size="14" letter-spacing="1" text-anchor="middle" style="filter:drop-shadow(0 0 4px rgba(255,42,31,.8))">TW-R</text></g>
+  <g class="wheel">
+    <circle cx="${cx}" cy="${cy}" r="132" fill="none" stroke="#040303" stroke-width="34" opacity=".6"/>
+    <circle cx="${cx}" cy="${cy}" r="128" fill="none" stroke="url(#leather)" stroke-width="27"/>
+    <circle cx="${cx}" cy="${cy}" r="128" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="2" stroke-dasharray="40 30"/>
+    <circle cx="${cx}" cy="${cy}" r="140" fill="none" stroke="#4a3e37" stroke-width=".8" stroke-dasharray="2 4"/>
+    <circle cx="${cx}" cy="${cy}" r="116" fill="none" stroke="#4a3e37" stroke-width=".8" stroke-dasharray="2 4"/>
+    <path d="M${cx-7} ${cy-142} h14 v28 h-14z" fill="#ff6a00"/>
+    ${spoke(`${cx-36},${cy-14} ${cx-117},${cy-11} ${cx-117},${cy+15} ${cx-36},${cy+20}`)}
+    ${spoke(`${cx+36},${cy-14} ${cx+117},${cy-11} ${cx+117},${cy+15} ${cx+36},${cy+20}`)}
+    ${spoke(`${cx-17},${cy+30} ${cx-13},${cy+117} ${cx+13},${cy+117} ${cx+17},${cy+30}`)}
+    ${holes}
+    <circle cx="${cx}" cy="${cy}" r="40" fill="url(#alu)"/>
+    <circle cx="${cx}" cy="${cy}" r="31" fill="#0e0c0b" stroke="#2c2522" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy}" r="31" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="1" stroke-dasharray="30 200"/>
+    <text x="${cx}" y="${cy+6}" fill="#ff2a1f" font-family="Archivo,Arial,sans-serif" font-weight="800" font-style="italic" font-size="16" text-anchor="middle">TW-R</text>
+  </g></svg>`;
+}
+/* Werkstatt-Szene: Hebebuehne, Leuchtstoffroehren, Bodenspiegelung */
+const FLOOR=372;
+function workshopSVG(o={}){
+  const u='w'+(U++), c=car();
+  const tubes=[170,400,630].map((x,i)=>`<g class="tube" style="animation-delay:${.15+i*.18}s"><rect x="${x-70}" y="22" width="140" height="6" rx="3" fill="#f6f2ea"/><rect x="${x-90}" y="14" width="180" height="40" fill="url(#tl${u})" opacity=".55"/></g>`).join('');
+  const person = o.mech ? `<g id="mech">
+      <ellipse cx="712" cy="${FLOOR+2}" rx="40" ry="5" fill="#000" opacity=".7"/>
+      <path d="M690 ${FLOOR} L697 300 L712 300 L716 ${FLOOR} L706 ${FLOOR} L704 314 L700 ${FLOOR} Z" fill="#151211" stroke="#ff6a00" stroke-opacity=".35" stroke-width="1"/>
+      <path d="M686 304 C684 270 688 236 704 226 C722 230 728 262 726 304 Z" fill="#1b1716" stroke="#ff6a00" stroke-opacity=".45" stroke-width="1"/>
+      <rect x="690" y="262" width="34" height="5" fill="#ff6a00" opacity=".75"/>
+      <circle cx="705" cy="212" r="13" fill="#1b1716" stroke="#ff6a00" stroke-opacity=".45" stroke-width="1"/>
+      <path d="M690 207 Q705 194 720 205 L726 207 L690 209 Z" fill="#0d0b0a"/>
+      <g id="arm" style="transform-origin:700px 236px"><path d="M700 236 L668 256 L640 258" stroke="#1b1716" stroke-width="11" stroke-linecap="round" fill="none"/>
+        <g id="gun" class="vib"><rect x="610" y="248" width="34" height="14" rx="3" fill="#2d2826"/><rect x="636" y="258" width="8" height="16" fill="#2d2826"/><rect x="598" y="252" width="14" height="5" fill="#8d8781"/><rect x="612" y="249" width="10" height="3" fill="#ff6a00"/></g>
+      </g>
+      <g id="sparks" opacity="0">${Array.from({length:7},(_,i)=>`<circle class="spark" cx="596" cy="254" r="1.6" fill="#ffc400" style="--x:${-10-Math.random()*26}px;--y:${-14+Math.random()*30}px;animation-delay:${i*.04}s"/>`).join('')}</g>
+    </g>` : '';
+  return `<svg viewBox="0 0 800 450" aria-hidden="true"><defs>${carDefs(u,'#ff2a1f','#ff6a00')}
+    <linearGradient id="wall${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#141211"/><stop offset="1" stop-color="#0a0908"/></linearGradient>
+    <linearGradient id="fl${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a1716"/><stop offset="1" stop-color="#050404"/></linearGradient>
+    <radialGradient id="tl${u}" cy="0"><stop offset="0" stop-color="#fff6e8" stop-opacity=".7"/><stop offset="1" stop-color="#fff6e8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="pool${u}" cx="50%" cy="0%" r="80%"><stop offset="0" stop-color="#fff2df" stop-opacity=".18"/><stop offset="1" stop-color="#fff2df" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rf${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <mask id="rm${u}"><rect x="0" y="${FLOOR}" width="800" height="90" fill="url(#rf${u})"/></mask>
+    <linearGradient id="steel${u}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c84a10"/><stop offset="1" stop-color="#6b250a"/></linearGradient>
+  </defs>
+  <rect width="800" height="${FLOOR}" fill="url(#wall${u})"/>
+  ${Array.from({length:9},(_,i)=>`<rect x="${i*92}" y="0" width="90" height="${FLOOR-60}" fill="none" stroke="#1b1817" stroke-width="2"/>`).join('')}
+  <rect x="0" y="${FLOOR-60}" width="800" height="4" fill="#ff6a00" opacity=".25"/>
+  <rect x="0" y="${FLOOR}" width="800" height="${450-FLOOR}" fill="url(#fl${u})"/>
+  <path d="M120 ${FLOOR} L680 ${FLOOR} L800 450 L0 450 Z" fill="url(#pool${u})"/>
+  <path d="M60 ${FLOOR+30} L740 ${FLOOR+30}" stroke="#ffc400" stroke-width="3" stroke-dasharray="20 14" opacity=".25"/>
+  ${tubes}
+  <rect x="0" y="0" width="800" height="${FLOOR}" fill="url(#pool${u})" opacity=".6"/>
+  <g id="lift"></g>
+  <g id="carMove" transform="translate(80 ${FLOOR-200})">${carInner(u,'#ff2a1f','#ff6a00',{gid:'carG',front:'fw',exh:'exh'})}</g>
+  <g mask="url(#rm${u})"><g id="refl" transform="translate(80 ${FLOOR+200}) scale(1 -1)"><use href="#carG"/></g></g>
+  ${person}
+  </svg>`;
+}
+function drawLift(H){
+  // Scherenbuehne: feste Armlaenge, Breite schrumpft beim Hochfahren
+  const L=330, h=Math.max(10,(FLOOR-10)-(FLOOR-48-H)), w=Math.sqrt(Math.max(L*L-h*h,0)), cx=398, py=FLOOR-48-H+6;
+  const by=FLOOR-6;
+  $('#lift').innerHTML=`<rect x="${cx-180}" y="${by}" width="360" height="8" fill="#2a2522"/>
+   <line x1="${cx-w/2}" y1="${by}" x2="${cx+w/2}" y2="${py}" stroke="#b5420f" stroke-width="9"/>
+   <line x1="${cx+w/2}" y1="${by}" x2="${cx-w/2}" y2="${py}" stroke="#8a320c" stroke-width="9"/>
+   <circle cx="${cx}" cy="${(by+py)/2}" r="5" fill="#d9d1c8"/>
+   <rect x="${cx-190}" y="${py-6}" width="380" height="10" fill="#c84a10"/><rect x="${cx-190}" y="${py-6}" width="380" height="2" fill="#ff8a3a"/>
+   <rect x="${cx-150}" y="${py-14}" width="22" height="8" fill="#111"/><rect x="${cx+128}" y="${py-14}" width="22" height="8" fill="#111"/>`;
+  $('#carMove').setAttribute('transform',`translate(80 ${FLOOR-200-H})`);
+  $('#carG').setAttribute('transform','');
+  $('#refl').setAttribute('transform',`translate(80 ${FLOOR+200+H}) scale(1 -1)`);
+}
+
+/* ================= Overlay-Steuerung ================= */
+let ovTimer=null, ovDone=null, ovRaf=0;
+function overlay({stage,title,sub,wide,dur,tick,steps,done}){
+  const ov=$('#ov');
+  if(reduce){ done&&done(); return; }
+  $('#ovStage').className='stage'+(wide?' wide':'');
+  $('#ovStage').innerHTML=stage; $('#ovTitle').innerHTML=title||''; $('#ovSub').textContent=sub||'';
+  $('#ovSteps').innerHTML=steps?`<div class="steps-list">${steps.map((s,i)=>`<span data-i="${i}">${s}</span>`).join('')}</div>`:'';
+  ov.classList.remove('out'); document.body.style.overflow='hidden';
+  const t0=performance.now(); const prog=$('#ovProg');
+  const finish=()=>{ if(!ovDone) return; const d=ovDone; ovDone=null; cancelAnimationFrame(ovRaf); clearTimeout(ovTimer); ov.classList.add('out'); document.body.style.overflow=''; d(); };
+  ovDone=done||(()=>{});
+  (function f(now){ const k=Math.min(1,(now-t0)/dur); prog.style.transform=`scaleX(${k})`; tick&&tick(k,now-t0); if(k<1) ovRaf=requestAnimationFrame(f); else ovTimer=setTimeout(finish,250); })(t0);
+  ov.onclick=finish;
+}
+function runIntro(){
+  overlay({stage:cockpitSVG(), title:'TUNE<em>WAY</em>', sub:'Zündung', dur:2700,
+    tick:(k)=>{
+      const f = k<.12?0 : k<.48 ? Math.sin(((k-.12)/.36)*Math.PI/2) : k<.8 ? 1-(1-Math.cos(((k-.48)/.32)*Math.PI))/2*.9 : .1;
+      const spd=$('#ndlSpd'), tach=$('#ndlTach'); if(!spd) return;
+      spd.style.transform=`rotate(${135+270*f*.94}deg)`; tach.style.transform=`rotate(${135+270*Math.max(f,k>.12?.1:0)}deg)`;
+      const rpm=9*f, col=['#3ddc84','#3ddc84','#ffc400','#ff6a00','#ff2a1f'];
+      document.querySelectorAll('#shift circle').forEach((c,i)=>c.setAttribute('fill',rpm>5.6+i*.6?col[i]:'#211b19'));
+      $('#ovSub').textContent = k<.12?'Zündung': k<.5?'Startvorgang': k<.82?'Drehzahlbegrenzer':'Bereit';
+    }, done:()=>{} });
+}
+function runLift(next){
+  const c=car();
+  overlay({stage:workshopSVG(), wide:true, title:`${c.brand} <em>${c.variant}</em>`, sub:'Fahrzeug wird aufgenommen', dur:2600,
+    tick:(k)=>{ const e=k<.25?0:Math.min(1,(k-.25)/.65), H=110*(1-Math.pow(1-e,3)); drawLift(H); if(k>.9) $('#ovSub').textContent='Ab in die Garage'; },
+    done:next });
+  drawLift(0);
+}
+function runWork(next){
+  const parts=[...state.parts]; const steps=[];
+  if(parts.some(id=>['forged','semi','spur','bbk','belag','gw','fed'].includes(id))) steps.push('Räder runter');
+  if(parts.some(id=>['abgas','esd','dp','klappe'].includes(id))) steps.push('Auspuff ab');
+  if(parts.some(id=>/^st|vmax|gbx/.test(id))) steps.push('Software flashen');
+  if(parts.some(id=>['splitter','diff','wing','hood','folie'].includes(id))) steps.push('Aero montieren');
+  if(!steps.length) steps.push('Fahrzeug prüfen');
+  steps.push('Tuner suchen');
+  overlay({stage:workshopSVG({mech:true}), wide:true, title:'Werkstatt <em>läuft</em>', sub:'', steps, dur:3400,
+    tick:(k)=>{
+      const fw=$('#fw'), ex=$('#exh'), sp=$('#sparks'); if(!fw) return;
+      const H=80; drawLift(H);
+      // Rad: 0-.3 schrauben, .3-.55 abziehen, .55-.75 fallen
+      sp.setAttribute('opacity', k<.3?1:0);
+      $('#gun').classList.toggle('vib', k<.3);
+      let dx=0, dy=0, rot=0;
+      if(k>.3){ const e=Math.min(1,(k-.3)/.25); dx=e*70; }
+      if(k>.55){ const e=Math.min(1,(k-.55)/.2); dx=70+e*30; dy=e*(H+0); rot=e*90; }
+      fw.setAttribute('transform',`translate(${500+dx} ${160+dy}) rotate(${rot})`);
+      $('#arm').style.transform = k>.3&&k<.55 ? `rotate(${-6*Math.sin((k-.3)*40)}deg)` : '';
+      if(k>.45){ const e=Math.min(1,(k-.45)/.2); ex.setAttribute('transform',`translate(${-e*6} ${e*(H+14)}) rotate(${e*-8} 40 152)`); }
+      const idx=Math.min(steps.length-1,Math.floor(k*steps.length));
+      document.querySelectorAll('.steps-list span').forEach((s,i)=>{ s.className= i<idx?'ok':i===idx?'on':''; if(i<idx&&!s.textContent.startsWith('✓')) s.textContent='✓ '+s.textContent; });
+      $('#ovSub').textContent=steps[idx];
+    }, done:next });
+}
+
+/* ================= Fahrzeugauswahl ================= */
+const uniq=a=>[...new Set(a)];
+const sel=(el,opts,val)=>{ el.innerHTML=opts.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join(''); el.value=opts.some(o=>o[0]===val)?val:opts[0][0]; };
+function fillSelects(level){
+  const c=car();
+  if(level<=0) sel($('#brand'),uniq(CARS.map(x=>x.brand)).map(b=>[b,b]),c.brand);
+  const b=$('#brand').value;
+  if(level<=1) sel($('#model'),uniq(CARS.filter(x=>x.brand===b).map(x=>x.model)).map(m=>[m,m]),c.model);
+  const m=$('#model').value;
+  if(level<=2) sel($('#series'),uniq(CARS.filter(x=>x.brand===b&&x.model===m).map(x=>x.series)).map(s=>[s,s]),c.series);
+  const s=$('#series').value;
+  sel($('#variant'),CARS.filter(x=>x.brand===b&&x.model===m&&x.series===s).map(x=>[x.id,`${x.variant} · ${x.ps} PS`]),c.id);
+  const changed = state.carId!==$('#variant').value;
+  state.carId=$('#variant').value;
+  if(changed){ [...state.parts].forEach(id=>{ if(avail(id)) state.parts.delete(id); }); fixStage(true); }
+  renderSpec(); save();
+}
+['brand','model','series','variant'].forEach((id,i)=>$('#'+id).addEventListener('change',()=>fillSelects(i+1)));
+$('#plz').value=state.plz;
+$('#plz').addEventListener('input',e=>{ state.plz=e.target.value.replace(/\D/g,''); e.target.value=state.plz; save(); });
+function renderSpec(){
+  const c=car();
+  $('#specline').innerHTML=`<span><b>${c.engine}</b></span><span><b>${c.ps}</b> PS</span><span><b>${c.nm}</b> Nm</span><span>0–100 <b>${dec(c.t)}</b> s</span><span><b>${c.years}</b></span>`;
+}
+$('#go1').addEventListener('click',()=>{ save(); runLift(()=>go('garage')); });
+
+/* ================= Ziele ================= */
+function fill(el,p){ el.style.setProperty('--p',(isFinite(p)?p:0)+'%'); }
+function setupGoals(){
+  const c=car(), mx=calc(maxSet()), gp=$('#gPs'), gv=$('#gV'), gt=$('#gT');
+  gp.min=c.ps; gp.max=mx.ps; gp.step=5; gv.min=c.vmax; gv.max=Math.max(mx.vmax,c.vmax); gv.step=1;
+  gt.min=Math.round(mx.t*10); gt.max=Math.round(c.t*10); gt.step=1; gt.style.direction='rtl';
+  state.goal={ps:c.ps,vmax:c.vmax,t:c.t}; gp.value=c.ps; gv.value=c.vmax; gt.value=Math.round(c.t*10);
+  renderGoals();
+}
+function renderGoals(){
+  const c=car(), G=state.goal, gp=$('#gPs'), gv=$('#gV'), gt=$('#gT');
+  fill(gp,(gp.value-gp.min)/(gp.max-gp.min)*100); fill(gv,(gv.value-gv.min)/(gv.max-gv.min)*100); fill(gt,(gt.max-gt.value)/(gt.max-gt.min)*100);
+  const o=(el,on,txt)=>{ el.textContent=on?txt:'Serie'; el.classList.toggle('off',!on); };
+  o($('#oPs'),G.ps>c.ps,G.ps+' PS'); o($('#oV'),G.vmax>c.vmax,G.vmax+' km/h'); o($('#oT'),G.t<c.t,dec(G.t)+' s');
+  const any=G.ps>c.ps||G.vmax>c.vmax||G.t<c.t, btn=$('#applyGoal');
+  if(!any){ $('#goalTxt').textContent='Regler schieben: Wir suchen das günstigste Setup für dein Ziel.'; btn.disabled=true; return; }
+  const b=solve(); if(!b){ $('#goalTxt').textContent='Diese Kombination schafft kein Setup.'; btn.disabled=true; return; }
+  const added=[...b.set].filter(id=>SOLVE.includes(id)).map(id=>P[id].name);
+  $('#goalTxt').innerHTML=`Schafft <b>${b.r.ps} PS · ${b.r.vmax} km/h · ${dec(b.r.t)} s</b> mit ${added.join(', ')||'deinem Setup'}. Ab <b>${eur(b.cost)}</b>.`;
+  btn.disabled=false;
+}
+$('#gPs').addEventListener('input',e=>{ state.goal.ps=+e.target.value; renderGoals(); });
+$('#gV').addEventListener('input',e=>{ state.goal.vmax=+e.target.value; renderGoals(); });
+$('#gT').addEventListener('input',e=>{ state.goal.t=+e.target.value/10; renderGoals(); });
+$('#applyGoal').addEventListener('click',()=>{ const b=solve(); if(!b) return; state.parts=b.set; save(); renderMenu(true); renderSide(); toast('Setup für dein Ziel übernommen'); });
+
+/* ================= Garage ================= */
+function fixStage(silent){
+  ['st3','st2'].forEach(id=>{
+    if(state.parts.has(id)&&P[id].req.some(r=>!state.parts.has(r))){
+      state.parts.delete(id);
+      const lower=id==='st3'?(P.st2.req.every(r=>state.parts.has(r))?'st2':'st1'):'st1';
+      if(!avail(lower)){ state.parts.add(lower); if(!silent) toast(`Ohne Pflichtteil nur noch ${P[lower].name.replace('Software ','')}`); }
+    }
+  });
+}
+function effLabel(p){
+  const c=car();
+  if(p.grp==='stage') return '+'+Math.round(c.ps*p.ps*(c.na?.25:1))+' PS';
+  if(p.hp) return '+'+Math.max(1,Math.round(c.ps*p.hp))+' PS';
+  if(p.trac) return 'Besserer Sprint';
+  if(p.kg) return (p.kg>0?'+':'−')+Math.abs(p.kg)+' kg';
+  if(p.snd) return 'Sound +'+p.snd;
+  return p.tag||'';
+}
+function renderMenu(flashAll){
+  let h=`<div class="g-top"><b>GARAGE</b><span>EINGEBAUT <b class="num">${state.parts.size}</b> / ${PARTS.length}</span></div>`;
+  CATS.forEach(([cat,label])=>{
+    h+=`<div class="cat"><span class="tag"><span>${label}</span></span></div><div class="tiles">`;
+    PARTS.filter(p=>p.cat===cat).forEach(p=>{ const why=avail(p.id), on=state.parts.has(p.id);
+      h+=`<button type="button" class="tile${on&&flashAll?' flash':''}" data-id="${p.id}" aria-pressed="${on}" ${why?'disabled':''}><strong>${p.name}</strong><span class="meta"><span class="eff">${why||effLabel(p)}</span><span class="pr num">${why?'':'ab '+eur(minPrice(p.id))}</span></span></button>`; });
+    h+=`</div>`;
+  });
+  $('#menu').innerHTML=h;
+}
+$('#menu').addEventListener('click',e=>{
+  const b=e.target.closest('.tile'); if(!b||b.disabled) return;
+  const id=b.dataset.id, p=P[id];
+  if(state.parts.has(id)){ state.parts.delete(id); fixStage(); }
+  else{ if(p.grp) GRP[p.grp].forEach(x=>state.parts.delete(x)); state.parts.add(id);
+    const added=(p.req||[]).filter(r=>!state.parts.has(r)); added.forEach(r=>state.parts.add(r));
+    if(added.length) toast(`${p.name}: ${added.map(r=>P[r].name).join(' + ')} mit eingebaut`); }
+  save(); renderMenu(); const nb=$(`.tile[data-id="${id}"]`); if(nb&&state.parts.has(id)) nb.classList.add('flash');
+  renderSide(); renderGoals();
+});
+const shown={};
+function anim(el,key,to,d=0){
+  const from=shown[key]??to; shown[key]=to;
+  if(reduce||from===to){ el.textContent=d?dec(to,d):Math.round(to).toLocaleString('de-DE'); return; }
+  const t0=performance.now();
+  (function step(now){ const k=Math.min(1,(now-t0)/700), e=1-Math.pow(1-k,4), v=from+(to-from)*e; el.textContent=d?dec(v,d):Math.round(v).toLocaleString('de-DE'); if(k<1) requestAnimationFrame(step); })(t0);
+}
+function segBar(el,s0,t0){ const s=Math.max(0,Math.min(10,Math.round(s0))), t=Math.max(s,Math.min(10,Math.round(t0))); el.innerHTML=Array.from({length:10},(_,i)=>`<i class="${i<s?'s':i<t?'u':''}"></i>`).join(''); }
+function bestOffer(){
+  const req=[...state.parts]; if(!req.length) return null;
+  const list=evalTuners(), full=list.filter(t=>t.match).sort((a,b)=>a.total-b.total);
+  if(full.length) return {total:full[0].total, who:full[0].name};
+  const k=comboBest(list,req); return k?{total:k.total, who:k.a.name+' + '+k.b.name}:null;
+}
+function renderSide(){
+  const c=car(), r=calc(state.parts);
+  anim($('#kPs'),'ps',r.ps); anim($('#kT'),'t',r.t,1); anim($('#kV'),'v',r.vmax);
+  const d=(el,txt,up)=>{ el.textContent=txt; el.className=up?'up':''; };
+  d($('#dPs'),r.ps>c.ps?`+${r.ps-c.ps} PS`:'Serie',r.ps>c.ps); d($('#dT'),r.t<c.t?`−${dec(c.t-r.t)} s`:'Serie',r.t<c.t);
+  d($('#dV'),r.vmax>c.vmax?`+${r.vmax-c.vmax} km/h`:(c.vmax<c.vmaxOpen?'abgeregelt':'Serie'),r.vmax>c.vmax);
+  const lvl=Math.min(1,Math.max(0,(c.ps-200)/450)), bh=4+lvl*2.2, bb=4+lvl*2.4, acc=t=>(7.6-t)/(7.6-2.3)*10, top=v=>(v-200)/(345-200)*10;
+  segBar($('#bAcc'),acc(c.t),acc(r.t)); segBar($('#bTop'),top(c.vmax),top(r.vmax)); segBar($('#bHan'),bh,bh+r.han); segBar($('#bBrk'),bb,bb+r.brk); segBar($('#bSnd'),2,2+(r.snd-1)*1.6);
+  const req=[...state.parts];
+  $('#lines').innerHTML=req.map(id=>`<li><span>${P[id].name}</span><span>ab ${eur(minPrice(id))}</span></li>`).join('');
+  const fee=tuevFee(state.parts), lg=$('#legal');
+  if(!req.length){ lg.className='legal ok'; lg.textContent='Serienzustand. Wähle Teile oder gib ein Ziel vor.'; }
+  else if(fee>120){ lg.className='legal'; lg.textContent=`Eintragung mit Gutachten nötig (TÜV ca. ${eur(fee)}).`; }
+  else { lg.className='legal ok'; lg.textContent='Teile mit ABE/EG-Genehmigung: meist nur Abnahme.'; }
+  const o=bestOffer();
+  $('#cPs').textContent=r.ps+' PS'; $('#cT').textContent=dec(r.t)+' s'; $('#cP').textContent=o?eur(o.total):'–';
+  $('#go2').disabled=!req.length;
+}
+$('#go2').addEventListener('click',()=>{ if(!state.parts.size) return; runWork(()=>go('tuner')); });
+
+/* ================= Tuner ================= */
+function km(t){ if(state.plz==='53797'||state.plz.length<5) return t.km; let h=0; for(const ch of state.plz+t.id) h=(h*31+ch.charCodeAt(0))%997; return Math.max(2,Math.round(t.km*.5+h%34)); }
+function slot(t){
+  const d=new Date(); d.setHours(0,0,0,0); let add=((t.id*7)%6)+1; d.setDate(d.getDate()+add); if(d.getDay()===0){ d.setDate(d.getDate()+1); add++; }
+  const times=['08:00','09:30','11:00','13:30','15:00'];
+  return {days:add+t.id/100, txt:d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})+' · '+times[t.id%5]};
+}
+function evalTuners(){
+  const c=car(), req=[...state.parts];
+  return TUNERS.map(t=>{ const brandOk=t.brands.includes(c.brand), miss=req.filter(r=>!t.parts.includes(r));
+    const total=req.filter(r=>t.parts.includes(r)).reduce((a,id)=>a+tunerPrice(t,id),0);
+    return {...t,brandOk,miss,match:brandOk&&!miss.length&&req.length>0,total,km:km(t),slot:slot(t),addr:ADDR[t.id],joined:JOINED[t.id]}; });
+}
+function comboBest(list,req){
+  const cand=list.filter(t=>t.brandOk); let best=null;
+  for(let i=0;i<cand.length;i++) for(let j=i+1;j<cand.length;j++){
+    const a=cand[i], b=cand[j], pick={}; let total=0, ok=true;
+    for(const id of req){ const pa=a.parts.includes(id)?tunerPrice(a,id):Infinity, pb=b.parts.includes(id)?tunerPrice(b,id):Infinity;
+      if(pa===Infinity&&pb===Infinity){ ok=false; break; } pick[id]=pa<=pb?{t:a,p:pa}:{t:b,p:pb}; total+=pick[id].p; }
+    if(ok&&Object.values(pick).some(x=>x.t===a)&&Object.values(pick).some(x=>x.t===b)&&(!best||total<best.total)) best={a,b,pick,total};
+  }
+  return best;
+}
+function renderTuners(animate){
+  const c=car(), req=[...state.parts]; let list=evalTuners();
+  const S={rec:(a,b)=>(b.plan==='pro')-(a.plan==='pro')||b.rating-a.rating, near:(a,b)=>a.km-b.km, cheap:(a,b)=>a.total-b.total, rating:(a,b)=>b.rating-a.rating, date:(a,b)=>a.slot.days-b.slot.days, new:(a,b)=>b.joined.localeCompare(a.joined)};
+  const q=state.q.trim().toLowerCase();
+  if(q) list=list.filter(t=>(t.name+' '+t.city+' '+t.addr).toLowerCase().includes(q));
+  if(state.onlyFull) list=list.filter(t=>t.match);
+  list.sort((a,b)=>(b.match-a.match)||(b.brandOk-a.brandOk)||S[state.sort](a,b));
+  const n=evalTuners().filter(t=>t.match).length;
+  $('#tSum').innerHTML=`<span><b>${c.brand} ${c.variant}</b> · ${req.length} Teile · PLZ ${state.plz||'–'}</span><span>${n} von ${TUNERS.length} bauen alles</span>`;
+  let combo='';
+  if(req.length&&!n){ const k=comboBest(evalTuners(),req);
+    if(k){ const A=req.filter(id=>k.pick[id].t===k.a).map(id=>P[id].name), B=req.filter(id=>k.pick[id].t===k.b).map(id=>P[id].name);
+      combo=`<div class="combo">Kein einzelner Tuner baut alles. <b>Kombi für ${eur(k.total)}:</b> ${k.a.name} (${A.join(', ')}) + ${k.b.name} (${B.join(', ')})</div>`; } }
+  $('#combo').innerHTML=combo;
+  if(!list.length){ $('#shops').innerHTML=`<div class="empty">Keine Treffer. Suche oder Filter ändern.</div>`; return; }
+  $('#shops').innerHTML=list.map((t,i)=>{
+    const cols=t.plan==='pro'?t.c:BASIC_C;
+    const caps=req.map(r=>`<span class="${t.parts.includes(r)?'hit':'miss'}">${P[r].name}</span>`).join('');
+    const pr=!t.brandOk?'–':t.miss.length?`${eur(t.total)}*`:eur(t.total);
+    return `<article class="shop ${t.plan==='pro'?'pro':''} ${t.match?'':'nomatch'} ${animate?'anim':''}" style="animation-delay:${Math.min(i,8)*45}ms">
+      <div class="banner" style="${bannerBG(cols[0],cols[1])}">${carSVG(cols[0],cols[1],{glow:t.plan==='pro'})}
+        <div class="lg" style="background:linear-gradient(135deg,${cols[0]},${cols[1]})">${t.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+        ${t.plan==='pro'?'<span class="tag"><span>Empfohlen</span></span>':''}</div>
+      <div class="bd">
+        <div><h3>${t.name}</h3><div class="addr">${t.addr}</div></div>
+        <div class="facts num">
+          <div><small>Entfernung</small><b>${t.km} km</b></div>
+          <div><small>Dein Setup</small><b class="p">${pr}</b></div>
+          <div><small>Nächster Termin</small><b>${t.slot.txt.split(' · ')[0]}</b></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;color:var(--muted)"><span>★ <b style="color:var(--yellow)">${dec(t.rating)}</b> (${t.reviews}) · ${t.slot.txt.split(' · ')[1]} Uhr frei</span><span>${!t.brandOk?`Kein ${c.brand}`:t.miss.length?`${req.length-t.miss.length}/${req.length} Teile`:'Komplett'}</span></div>
+        ${caps?`<div class="caps">${caps}</div>`:''}
+        <button class="btn ${t.plan==='pro'?'primary':'ghost'} small" type="button" data-open="${t.id}">${t.plan==='pro'?'Profil &amp; Termin anfragen':'Kontakt anzeigen'}</button>
+      </div></article>`; }).join('') + (list.some(t=>t.brandOk&&t.miss.length)?`<p class="fine" style="grid-column:1/-1">* Preis ohne die durchgestrichenen Teile.</p>`:'');
+}
+$('#q').addEventListener('input',e=>{ state.q=e.target.value; renderTuners(false); });
+$('#chips').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.id==='onlyFull'){ state.onlyFull=!state.onlyFull; b.setAttribute('aria-pressed',state.onlyFull); }
+  else { state.sort=b.dataset.s; $('#chips').querySelectorAll('button[data-s]').forEach(x=>x.setAttribute('aria-pressed',x===b)); }
+  renderTuners(true);
+});
+document.addEventListener('click',e=>{ const o=e.target.closest('[data-open]'); if(o) openTuner(+o.dataset.open); const p=e.target.closest('[data-plan]'); if(p) toast(`Demo: Hier startet später die Anmeldung für ${p.dataset.plan}.`); });
+
+/* ================= Profil ================= */
+function setupText(){
+  const c=car(), r=calc(state.parts);
+  return `Fahrzeug: ${c.brand} ${c.variant} (${c.series}), ${c.engine}, ${c.years}\nSetup: ${[...state.parts].map(id=>P[id].name).join(', ')||'noch offen'}\nLaut Konfigurator: ca. ${r.ps} PS / ${r.nm} Nm / ${dec(r.t)} s / ${r.vmax} km/h\nPLZ: ${state.plz}`;
+}
+function openTuner(id){
+  const t=evalTuners().find(x=>x.id===id), c=car(), sheet=$('#sheet');
+  if(t.plan!=='pro'){
+    sheet.innerHTML=`<div style="position:relative;padding:24px">
+      <button class="x" type="button" aria-label="Schließen" data-close>×</button>
+      <div class="eyebrow">Basis-Eintrag</div><h2 style="font-size:22px;margin:10px 60px 6px 0">${t.name}</h2>
+      <p class="muted" style="margin:0 0 4px">${t.addr} · ${t.km} km</p><p class="muted" style="margin:0 0 16px">★ ${dec(t.rating)} (${t.reviews}) · nächster Termin ${t.slot.txt} Uhr</p>
+      <div class="facts" style="grid-template-columns:1fr 1fr"><div><small>Telefon</small><b>0000 / 000000</b></div><div><small>Marken</small><b style="font-family:var(--body);font-size:13px;font-weight:600">${t.brands.join(', ')}</b></div></div>
+      <p class="fine" style="margin-top:14px">Basis-Abo: kein Kontaktformular. Telefonnummer ist ein Platzhalter.</p></div>`;
+  } else {
+    const picks=CARS.filter(x=>t.brands.includes(x.brand)).sort((a,b)=>b.ps-a.ps).slice(0,3);
+    const builds=picks.map((x,i)=>{ const st=[2,3,1][i], ps=Math.round(x.ps*(1+[0,.2,.3,.45][st]*(x.na?.25:1)+.03));
+      return `<div class="build"><div class="banner" style="${bannerBG(t.c[i%2],t.c[(i+1)%2])}">${carSVG(t.c[i%2],t.c[(i+1)%2])}</div><div class="t"><b class="num">${x.ps} → ${ps} PS</b>${x.brand} ${x.variant} · Stage ${st}</div></div>`; }).join('');
+    const req=[...state.parts]; let rows='';
+    if(!t.brandOk) rows=`<tr><td>Kein ${c.brand}-Spezialist</td><td>–</td></tr>`;
+    else if(!req.length) rows=`<tr><td>Noch nichts gewählt</td><td>–</td></tr>`;
+    else rows=req.map(id=>`<tr><td>${P[id].name}</td><td>${t.parts.includes(id)?eur(tunerPrice(t,id)):'nicht im Angebot'}</td></tr>`).join('')+`<tr class="sum"><td>Summe${t.miss.length?' (ohne fehlende Teile)':''}</td><td>${eur(t.total)}</td></tr>`;
+    sheet.innerHTML=`<div class="banner" style="${bannerBG(t.c[0],t.c[1])}">${carSVG(t.c[0],t.c[1],{glow:true,beam:true,moving:!reduce})}
+        <button class="x" type="button" aria-label="Schließen" data-close>×</button>
+        <div class="ttl"><span class="tag"><span>Pro-Partner</span></span><h2>${t.name}</h2></div></div>
+      <div class="inner">
+        <div><p style="margin:0;font-size:17px">${t.tag}.</p><p class="muted" style="margin:6px 0 0;font-size:14px">${t.addr} · ${t.km} km</p></div>
+        <div class="facts num" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+          <div><small>Bewertung</small><b>★ ${dec(t.rating)}</b></div><div><small>Seit</small><b>${t.since}</b></div>
+          <div><small>Nächster Termin</small><b>${t.slot.txt.split(' · ')[0]}</b></div><div><small>Uhrzeit</small><b>${t.slot.txt.split(' · ')[1]}</b></div>
+        </div>
+        <div><h4>Builds</h4><div class="builds">${builds}</div></div>
+        <div><h4>Preise für dein Setup · ${c.variant}</h4><table class="pt num">${rows}</table></div>
+        <div><h4>Kundenstimmen <span class="muted">(Beispiele)</span></h4><div class="quotes">
+          <blockquote>Beispieltext: Abstimmung auf dem Prüfstand, Protokoll vorher und nachher bekommen.<cite>Platzhalter für echte Bewertung</cite></blockquote>
+          <blockquote>Beispieltext: Gutachten und Eintragung direkt mit organisiert.<cite>Platzhalter für echte Bewertung</cite></blockquote></div></div>
+        <div><h4>Termin anfragen</h4><form class="contact" id="cf">
+          <div class="two"><label class="f" for="cf-n">Name<input id="cf-n" type="text" required autocomplete="name"></label><label class="f" for="cf-t">Telefon<input id="cf-t" type="tel" autocomplete="tel"></label></div>
+          <label class="f" for="cf-m">E-Mail<input id="cf-m" type="email" required autocomplete="email"></label>
+          <label class="f" for="cf-x">Fahrzeug &amp; Setup (automatisch ausgefüllt)<textarea id="cf-x" rows="5"></textarea></label>
+          <button class="btn primary" type="submit">Anfrage für ${t.slot.txt} Uhr</button>
+          <div class="sent" id="sent">Demo-Modus: Es wurde nichts verschickt. In der fertigen Version landet die Anfrage direkt bei ${t.name}.</div>
+        </form></div>
+      </div>`;
+    $('#cf-x').value=setupText();
+    $('#cf').addEventListener('submit',e=>{ e.preventDefault(); $('#sent').classList.add('show'); });
+  }
+  $('#modal').classList.add('open'); document.body.style.overflow='hidden';
+  const x=sheet.querySelector('[data-close]'); if(x) x.focus();
+}
+function closeModal(){ $('#modal').classList.remove('open'); document.body.style.overflow=''; }
+$('#modal').addEventListener('click',e=>{ if(e.target.id==='modal'||e.target.closest('[data-close]')) closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+let tt; function toast(m){ const el=$('#toast'); el.textContent=m; el.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),2400); }
+
+/* ================= Router (#start, #garage, #tuner, #agb, #impressum) ================= */
+const VIEWS=['start','garage','tuner','agb','impressum'];
+function show(){
+  let v=(location.hash||'#start').slice(1); if(!VIEWS.includes(v)) v='start';
+  if(v==='tuner'&&!state.parts.size) v='garage';
+  VIEWS.forEach(x=>$('#v-'+x).classList.toggle('on',x===v));
+  $('#ctabar').classList.toggle('on',v==='garage');
+  const order=['start','garage','tuner'], idx=order.indexOf(v);
+  document.querySelectorAll('#stepper a').forEach((a,i)=>{ a.className=i===idx?'on':(idx>i?'done':''); });
+  if(v==='start'){ renderSpec(); $('#startCar').innerHTML=`<div class="parkin">${carSVG('#ff2a1f','#ff6a00',{glow:true,beam:true})}</div>`; }
+  if(v==='garage'){ const c=car(); $('#gTitle').textContent=`${c.brand} ${c.variant}`; $('#gSub').textContent=`${c.series} · ${c.engine} · ${c.ps} PS · ${c.years}`; setupGoals(); renderMenu(); renderSide(); }
+  if(v==='tuner'){ renderTuners(true); }
+  window.scrollTo(0,0);
+}
+function go(v){ if(location.hash==='#'+v) show(); else location.hash=v; }
+window.addEventListener('hashchange',show);
+
+/* ================= Start ================= */
+fillSelects(0);
+show();
+runIntro();
+try{ if('serviceWorker' in navigator && location.protocol==='https:' && window.top===window.self) navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){}
+})();
+</script>
+</body>
+</html>
